@@ -132,7 +132,10 @@ ShotResult GameSession::fireAt(Side side, Coord coord)
     }
 
     emit sideStateChanged(side);
-    checkVictory(side);
+
+    // 与旧版一致：只有命中才判定胜负（落空不可能击沉最后一艘，仅为保持语义一致）
+    if (result != ShotResult::Miss)
+        checkVictory(side);
     return result;
 }
 
