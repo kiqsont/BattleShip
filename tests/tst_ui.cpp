@@ -4,11 +4,16 @@
 #include "ui/CellButton.h"
 #include "ui/MainWindow.h"
 #include "ui/PlacementView.h"
+#include "ui/RulesView.h"
 
 #include <QApplication>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QStackedWidget>
 #include <QtTest>
 
 using namespace bs;
@@ -21,6 +26,9 @@ class UiTest : public QObject
 
 private slots:
     void mainWindowBuildsMenu();
+    void mainWindowIsResizable();
+    void menuNavigatesToRulesAndBack();
+    void rulesPageScrollsThroughAllSections();
     void placementWiresInputsToBoard();
     void deleteUsesSameAxisAsPlacement();
     void battleCellClickReachesSession();
@@ -64,6 +72,66 @@ void UiTest::mainWindowBuildsMenu()
     QVERIFY(firstByText<QPushButton>(&window, QStringLiteral("开始")) != nullptr);
     QVERIFY(firstByText<QPushButton>(&window, QStringLiteral("Player1")) != nullptr);
     QVERIFY(firstByText<QPushButton>(&window, QStringLiteral("规则说明")) != nullptr);
+}
+
+void UiTest::mainWindowIsResizable()
+{
+    ui::MainWindow window;
+
+    // 旧版 setFixedSize(480, 900)：规则页在宽屏上只能拉一条很窄的文字栏
+    QVERIFY(window.minimumWidth() < 900);
+    QVERIFY(window.maximumWidth() > 900);
+
+    window.resize(900, 780);
+    QCOMPARE(window.size(), QSize(900, 780));
+}
+
+void UiTest::menuNavigatesToRulesAndBack()
+{
+    ui::MainWindow window;
+    auto* stack = window.findChild<QStackedWidget*>();
+    QVERIFY(stack != nullptr);
+
+    QPushButton* rulesButton = firstByText<QPushButton>(&window, QStringLiteral("规则说明"));
+    QVERIFY(rulesButton != nullptr);
+    rulesButton->click();
+
+    auto* rules = window.findChild<ui::RulesView*>();
+    QVERIFY(rules != nullptr);
+    QCOMPARE(stack->currentWidget(), static_cast<QWidget*>(rules));
+
+    // 页眉的返回按钮要能回到主菜单
+    QPushButton* back = firstByText<QPushButton>(rules, QStringLiteral("←"));
+    QVERIFY(back != nullptr);
+    back->click();
+    QVERIFY(stack->currentWidget() != static_cast<QWidget*>(rules));
+}
+
+void UiTest::rulesPageScrollsThroughAllSections()
+{
+    ui::RulesView view;
+    view.resize(480, 900);
+    view.show();
+    QCoreApplication::processEvents();
+
+    auto* area = view.findChild<QScrollArea*>();
+    QVERIFY(area != nullptr);
+    QWidget* content = area->widget();
+    QVERIFY(content != nullptr);
+
+    // 内容比窗口高，必须能滚动
+    QVERIFY2(area->verticalScrollBar()->maximum() > 0, "规则页内容没有超出窗口，说明排版塌陷了");
+
+    // 六个章节编号齐全
+    QStringList numbers;
+    for (QLabel* label : content->findChildren<QLabel*>()) {
+        const QString text = label->text();
+        if (text.size() == 2 && text.startsWith(QLatin1Char('0')))
+            numbers << text;
+    }
+    numbers.sort();
+    QCOMPARE(numbers, QStringList({QStringLiteral("01"), QStringLiteral("02"), QStringLiteral("03"),
+                                   QStringLiteral("04"), QStringLiteral("05"), QStringLiteral("06")}));
 }
 
 void UiTest::placementWiresInputsToBoard()

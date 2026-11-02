@@ -11,6 +11,7 @@ namespace bs {
 namespace ui {
 
 class BattleView;
+class MenuPage;
 class PlacementView;
 class RulesView;
 
@@ -24,19 +25,23 @@ class MainWindow : public QWidget
 public:
     explicit MainWindow(QWidget* parent = nullptr);
 
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
 private:
-    QWidget* buildMenuPage();
     void showMenu();
     void startPlacement(Side side);
     void startBattle();
+    void startRules();
 
     GameSession m_session;
     QStackedWidget* m_stack = nullptr;
-    QWidget* m_menuPage = nullptr;
+    MenuPage* m_menuPage = nullptr;
     PlacementView* m_placement = nullptr;
     BattleView* m_battle = nullptr;
     RulesView* m_rules = nullptr;
-    QWidget* m_rulesPage = nullptr;
+    QWidget* m_placementPage = nullptr;
+    QWidget* m_battlePage = nullptr;
 };
 
 } // namespace ui

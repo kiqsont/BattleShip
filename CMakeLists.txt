@@ -31,6 +31,8 @@ target_link_libraries(battleship_core PUBLIC Qt5::Core)
 
 # 界面层：独立成库，便于被测例直接构造
 add_library(battleship_ui STATIC
+    src/ui/Theme.h
+    src/ui/Theme.cpp
     src/ui/Pixmaps.h
     src/ui/Pixmaps.cpp
     src/ui/CellButton.h
@@ -45,7 +47,10 @@ add_library(battleship_ui STATIC
     src/ui/BattleView.cpp
     src/ui/RulesView.h
     src/ui/RulesView.cpp
-    src/ui/rules.ui
+    src/ui/MenuButton.h
+    src/ui/MenuButton.cpp
+    src/ui/MenuPage.h
+    src/ui/MenuPage.cpp
     src/ui/MainWindow.h
     src/ui/MainWindow.cpp
 )

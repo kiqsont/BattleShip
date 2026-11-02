@@ -20,6 +20,9 @@ SOURCES += \
     src/ui/TurnBar.cpp \
     src/ui/PlacementView.cpp \
     src/ui/BattleView.cpp \
+    src/ui/Theme.cpp \
+    src/ui/MenuButton.cpp \
+    src/ui/MenuPage.cpp \
     src/ui/RulesView.cpp \
     src/ui/MainWindow.cpp
 
@@ -35,11 +38,11 @@ HEADERS += \
     src/ui/TurnBar.h \
     src/ui/PlacementView.h \
     src/ui/BattleView.h \
+    src/ui/Theme.h \
+    src/ui/MenuButton.h \
+    src/ui/MenuPage.h \
     src/ui/RulesView.h \
     src/ui/MainWindow.h
-
-FORMS += \
-    src/ui/rules.ui
 
 RESOURCES += \
     resources/res.qrc
