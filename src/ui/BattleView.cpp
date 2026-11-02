@@ -38,12 +38,13 @@ BattleView::BattleView(GameSession* session, QWidget* parent)
     layout->addWidget(m_boards[1], 0, Qt::AlignHCenter);
     layout->addWidget(m_bars[1], 0, Qt::AlignHCenter);
 
-    connect(m_session, &GameSession::cellChanged, this, [this](Side side, Coord coord) {
-        refreshCell(side, coord);
+    connect(m_session, &GameSession::cellChanged, this, [this](Side boardOwner, Coord coord) {
+        refreshCell(boardOwner, coord);
     });
     connect(m_session, &GameSession::sideStateChanged, this, [this](Side side) {
         refreshBar(side);
         refreshBoard(side);
+        refreshBoard(otherSide(side));
     });
     connect(m_session, &GameSession::turnChanged, this, [this](Side) { refreshAll(); });
     connect(m_session, &GameSession::finished, this, &BattleView::onFinished);
@@ -62,14 +63,17 @@ void BattleView::startBattle()
     refreshAll();
 }
 
-CellVisual BattleView::visualFor(Side side, Coord coord) const
+CellVisual BattleView::visualFor(Side boardOwner, Coord coord) const
 {
     CellVisual visual;
-    const CellView view = m_session->board(side).view(coord);
+    const CellView view = m_session->board(boardOwner).view(coord);
 
     if (!view.resolved) {
-        if (m_session->isSelected(side, coord))
+        // 选中态只出现在攻击方要打的那块（对方）海域上
+        if (boardOwner != m_session->currentSide()
+            && m_session->isSelected(m_session->currentSide(), coord)) {
             visual.kind = CellVisual::Kind::Selected;
+        }
         return visual;
     }
 
@@ -79,37 +83,43 @@ CellVisual BattleView::visualFor(Side side, Coord coord) const
     }
 
     visual.ship = view.type;
-    visual.kind = m_volleyHits[index(side)].contains(coord.flatIndex()) ? CellVisual::Kind::VolleyHit
-                                                                      : CellVisual::Kind::Hit;
+    visual.sunk = view.sunk;
+    visual.kind = m_volleyHits[index(boardOwner)].contains(coord.flatIndex())
+                      ? CellVisual::Kind::VolleyHit
+                      : CellVisual::Kind::Hit;
     return visual;
 }
 
-bool BattleView::cellInteractive(Side side, Coord coord) const
+bool BattleView::cellInteractive(Side boardOwner, Coord coord) const
 {
     if (m_session->phase() != GameSession::Phase::Battle)
         return false;
-    if (side != m_session->currentSide())
+
+    const Side attacker = m_session->currentSide();
+    // 只允许攻击对方海域
+    if (boardOwner == attacker)
         return false;
-    if (m_session->board(side).isResolved(coord))
+    if (m_session->board(boardOwner).isResolved(coord))
         return false;
-    if (m_session->isVolleyArmed(side))
-        return m_session->isSelectable(side, coord);
+    if (m_session->isVolleyArmed(attacker))
+        return m_session->isSelectable(attacker, coord);
     return true;
 }
 
-void BattleView::refreshCell(Side side, Coord coord)
+void BattleView::refreshCell(Side boardOwner, Coord coord)
 {
-    m_boards[index(side)]->setCell(coord.row, coord.col, visualFor(side, coord),
-                                   cellInteractive(side, coord));
+    m_boards[index(boardOwner)]->setCell(coord.row, coord.col, visualFor(boardOwner, coord),
+                                         cellInteractive(boardOwner, coord));
 }
 
-void BattleView::refreshBoard(Side side)
+void BattleView::refreshBoard(Side boardOwner)
 {
-    BoardWidget* board = m_boards[index(side)];
+    BoardWidget* board = m_boards[index(boardOwner)];
     for (int row = 0; row < kBoardSize; ++row) {
         for (int col = 0; col < kBoardSize; ++col) {
             const Coord coord(row, col);
-            board->setCell(row, col, visualFor(side, coord), cellInteractive(side, coord));
+            board->setCell(row, col, visualFor(boardOwner, coord),
+                           cellInteractive(boardOwner, coord));
         }
     }
 }
@@ -120,7 +130,7 @@ void BattleView::refreshBar(Side side)
     const bool active =
         m_session->phase() == GameSession::Phase::Battle && m_session->currentSide() == side;
     bar->setActive(active);
-    bar->setBudget(m_session->budget(side));
+    bar->setVolleyCredits(m_session->volleyCredits(side));
     bar->setArmed(m_session->isVolleyArmed(side));
 }
 
@@ -133,45 +143,51 @@ void BattleView::refreshAll()
     }
 }
 
-void BattleView::onCellActivated(Side side, Coord coord)
+void BattleView::onCellActivated(Side boardOwner, Coord coord)
 {
     if (m_session->phase() != GameSession::Phase::Battle)
         return;
 
-    m_bars[index(side)]->clearHits();
-
-    if (m_session->isVolleyArmed(side))
-        m_session->toggleSelection(side, coord);
-    else
-        m_session->fireAt(side, coord);
-}
-
-void BattleView::onArm(Side side)
-{
-    m_session->armVolley(side, m_bars[index(side)]->requestedUnits());
-}
-
-void BattleView::onFire(Side side)
-{
-    if (!m_session->isVolleyArmed(side))
+    const Side attacker = m_session->currentSide();
+    if (attacker == boardOwner)
         return;
 
-    const std::vector<Coord> selected = m_session->selectedCells(side);
-    const GameSession::VolleyOutcome outcome = m_session->fireVolley(side);
+    m_bars[index(attacker)]->clearHits();
 
+    if (m_session->isVolleyArmed(attacker))
+        m_session->toggleSelection(attacker, coord);
+    else
+        m_session->fireAt(attacker, coord);
+}
+
+void BattleView::onArm(Side attacker)
+{
+    m_session->armVolley(attacker, m_bars[index(attacker)]->requestedVolleys());
+}
+
+void BattleView::onFire(Side attacker)
+{
+    if (!m_session->isVolleyArmed(attacker))
+        return;
+
+    const std::vector<Coord> selected = m_session->selectedCells(attacker);
+    const GameSession::VolleyOutcome outcome = m_session->fireVolley(attacker);
+
+    // 齐射命中的格子显示通用标记，除非该舰被击沉
+    QSet<int>& revealed = m_volleyHits[index(otherSide(attacker))];
     for (const Coord& coord : selected)
-        m_volleyHits[index(side)].insert(coord.flatIndex());
+        revealed.insert(coord.flatIndex());
 
-    m_bars[index(side)]->setHits(outcome.hits);
-    m_bars[index(side)]->clearInput();
+    m_bars[index(attacker)]->setHits(outcome.hits);
+    m_bars[index(attacker)]->clearInput();
     refreshAll();
 }
 
-void BattleView::onCancel(Side side)
+void BattleView::onCancel(Side attacker)
 {
-    m_session->cancelVolley(side);
-    m_bars[index(side)]->clearInput();
-    m_bars[index(side)]->clearHits();
+    m_session->cancelVolley(attacker);
+    m_bars[index(attacker)]->clearInput();
+    m_bars[index(attacker)]->clearHits();
 }
 
 void BattleView::onFinished(Side winner)

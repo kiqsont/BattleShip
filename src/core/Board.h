@@ -15,6 +15,7 @@ struct CellView {
     bool occupied = false;   ///< 该格是否有船
     bool resolved = false;   ///< 该格是否已被揭开（命中或落空）
     bool isHead = false;     ///< 是否是船头（布置界面用来画船头贴图）
+    bool sunk = false;       ///< 该格的船是否已被击沉
     ShipType type = ShipType::Submarine;
     Direction direction = Direction::Down;
 };

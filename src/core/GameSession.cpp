@@ -23,7 +23,7 @@ const Board& GameSession::board(Side side) const
 void GameSession::resetRuntime(Side side)
 {
     const size_t i = static_cast<size_t>(index(side));
-    m_budget[i] = -1;
+    m_volleyCredits[i] = 0;
     m_armed[i] = false;
     m_target[i] = 0;
     m_remaining[i] = 0;
@@ -57,9 +57,9 @@ void GameSession::leaveBattle()
     m_phase = Phase::Placement;
 }
 
-int GameSession::budget(Side side) const
+int GameSession::volleyCredits(Side side) const
 {
-    return m_budget[static_cast<size_t>(index(side))];
+    return m_volleyCredits[static_cast<size_t>(index(side))];
 }
 
 bool GameSession::isVolleyArmed(Side side) const
@@ -79,7 +79,7 @@ int GameSession::volleyRemaining(Side side) const
 
 int GameSession::volleyCost(Side side) const
 {
-    return m_target[static_cast<size_t>(index(side))] / rules::kCellsPerVolleyUnit;
+    return m_target[static_cast<size_t>(index(side))] / rules::kCellsPerVolley;
 }
 
 int GameSession::selectedCount(Side side) const
@@ -98,57 +98,62 @@ bool GameSession::isSelected(Side side, Coord coord) const
     return std::find(selected.begin(), selected.end(), coord) != selected.end();
 }
 
-bool GameSession::isSelectable(Side side, Coord coord) const
+bool GameSession::isSelectable(Side attacker, Coord coord) const
 {
-    const size_t i = static_cast<size_t>(index(side));
-    if (m_phase != Phase::Battle || side != m_current || !m_armed[i])
+    const size_t i = static_cast<size_t>(index(attacker));
+    if (m_phase != Phase::Battle || attacker != m_current || !m_armed[i])
         return false;
-    if (!coord.isValid() || m_boards[i].isResolved(coord))
+
+    // 选中的是对方海域的格子
+    const Board& target = m_boards[static_cast<size_t>(index(otherSide(attacker)))];
+    if (!coord.isValid() || target.isResolved(coord))
         return false;
-    if (isSelected(side, coord))
+    if (isSelected(attacker, coord))
         return true;
-    // 目标格数选满后，其余格子不可再选（旧版靠 CellButton::full 标记实现）
+    // 目标格数选满后，其余格子不可再选
     return m_target[i] <= 0 || m_remaining[i] > 0;
 }
 
-ShotResult GameSession::fireAt(Side side, Coord coord)
+ShotResult GameSession::fireAt(Side attacker, Coord coord)
 {
-    if (m_phase != Phase::Battle || side != m_current || !coord.isValid())
+    if (m_phase != Phase::Battle || attacker != m_current || !coord.isValid())
         return ShotResult::AlreadyResolved;
 
-    Board& target = m_boards[static_cast<size_t>(index(side))];
+    const Side defender = otherSide(attacker);
+    Board& target = m_boards[static_cast<size_t>(index(defender))];
     if (target.isResolved(coord))
         return ShotResult::AlreadyResolved;
 
     const ShotResult result = target.shoot(coord);
-    emit cellChanged(side, coord);
+    emit cellChanged(defender, coord);
 
-    const size_t i = static_cast<size_t>(index(side));
+    const size_t i = static_cast<size_t>(index(attacker));
     if (result == ShotResult::Miss) {
-        m_budget[i] = -1;
-        switchTurn(otherSide(side));
-    } else {
-        ++m_budget[i];
+        // 落空换手，本回合累积的扫射次数作废
+        m_volleyCredits[i] = 0;
+        switchTurn(defender);
+    } else if (result == ShotResult::Sunk) {
+        // "每再击沉一艘舰，得一次一起扫射"
+        ++m_volleyCredits[i];
     }
 
-    emit sideStateChanged(side);
+    emit sideStateChanged(attacker);
 
-    // 与旧版一致：只有命中才判定胜负（落空不可能击沉最后一艘，仅为保持语义一致）
     if (result != ShotResult::Miss)
-        checkVictory(side);
+        checkVictory(attacker);
     return result;
 }
 
-bool GameSession::armVolley(Side side, int units)
+bool GameSession::armVolley(Side attacker, int volleys)
 {
-    const size_t i = static_cast<size_t>(index(side));
-    if (m_phase != Phase::Battle || side != m_current)
+    const size_t i = static_cast<size_t>(index(attacker));
+    if (m_phase != Phase::Battle || attacker != m_current)
         return false;
-    if (m_budget[i] <= 0)
+    if (m_volleyCredits[i] <= 0 || volleys <= 0)
         return false;
 
-    int target = units > 0 ? units * rules::kCellsPerVolleyUnit : 0;
-    const int maxCells = m_budget[i] * rules::kCellsPerVolleyUnit;
+    int target = volleys * rules::kCellsPerVolley;
+    const int maxCells = m_volleyCredits[i] * rules::kCellsPerVolley;
     if (target > maxCells)
         target = maxCells;
 
@@ -157,16 +162,18 @@ bool GameSession::armVolley(Side side, int units)
     m_remaining[i] = target;
     m_selected[i].clear();
 
-    emit sideStateChanged(side);
+    emit sideStateChanged(attacker);
     return true;
 }
 
-bool GameSession::toggleSelection(Side side, Coord coord)
+bool GameSession::toggleSelection(Side attacker, Coord coord)
 {
-    const size_t i = static_cast<size_t>(index(side));
-    if (m_phase != Phase::Battle || side != m_current || !m_armed[i])
+    const size_t i = static_cast<size_t>(index(attacker));
+    if (m_phase != Phase::Battle || attacker != m_current || !m_armed[i])
         return false;
-    if (!coord.isValid() || m_boards[i].isResolved(coord))
+
+    const Board& target = m_boards[static_cast<size_t>(index(otherSide(attacker)))];
+    if (!coord.isValid() || target.isResolved(coord))
         return false;
 
     std::vector<Coord>& selected = m_selected[i];
@@ -175,20 +182,20 @@ bool GameSession::toggleSelection(Side side, Coord coord)
         selected.erase(it);
         ++m_remaining[i];
     } else {
-        if (!isSelectable(side, coord))
+        if (!isSelectable(attacker, coord))
             return false;
         selected.push_back(coord);
         --m_remaining[i];
     }
 
-    emit cellChanged(side, coord);
-    emit sideStateChanged(side);
+    emit cellChanged(otherSide(attacker), coord);
+    emit sideStateChanged(attacker);
     return true;
 }
 
-void GameSession::cancelVolley(Side side)
+void GameSession::cancelVolley(Side attacker)
 {
-    const size_t i = static_cast<size_t>(index(side));
+    const size_t i = static_cast<size_t>(index(attacker));
     if (!m_armed[i])
         return;
 
@@ -197,39 +204,40 @@ void GameSession::cancelVolley(Side side)
     m_remaining[i] = 0;
     m_selected[i].clear();
 
-    emit sideStateChanged(side);
+    emit sideStateChanged(attacker);
 }
 
-GameSession::VolleyOutcome GameSession::fireVolley(Side side)
+GameSession::VolleyOutcome GameSession::fireVolley(Side attacker)
 {
     VolleyOutcome outcome;
-    const size_t i = static_cast<size_t>(index(side));
-    if (m_phase != Phase::Battle || side != m_current || !m_armed[i])
+    const size_t i = static_cast<size_t>(index(attacker));
+    if (m_phase != Phase::Battle || attacker != m_current || !m_armed[i])
         return outcome;
 
-    outcome.cost = volleyCost(side);
-    m_budget[i] -= outcome.cost;
+    const Side defender = otherSide(attacker);
+    outcome.cost = volleyCost(attacker);
+    m_volleyCredits[i] -= outcome.cost;
 
-    Board& target = m_boards[i];
+    Board& target = m_boards[static_cast<size_t>(index(defender))];
     const std::vector<Coord> selected = m_selected[i];
     for (const Coord& coord : selected) {
         if (target.shoot(coord) != ShotResult::Miss)
             ++outcome.hits;
-        emit cellChanged(side, coord);
+        emit cellChanged(defender, coord);
     }
 
     m_armed[i] = false;
     m_target[i] = 0;
     m_remaining[i] = 0;
     m_selected[i].clear();
-    emit sideStateChanged(side);
+    emit sideStateChanged(attacker);
 
     if (outcome.hits == 0) {
-        m_budget[i] = -1;
-        switchTurn(otherSide(side));
+        m_volleyCredits[i] = 0;
+        switchTurn(defender);
     }
 
-    checkVictory(side);
+    checkVictory(attacker);
     return outcome;
 }
 
@@ -239,15 +247,17 @@ void GameSession::switchTurn(Side to)
     emit turnChanged(m_current);
 }
 
-bool GameSession::checkVictory(Side side)
+bool GameSession::checkVictory(Side attacker)
 {
     if (m_phase != Phase::Battle)
         return false;
-    if (!m_boards[static_cast<size_t>(index(side))].allSunk())
+
+    // 打光对方全部舰船即获胜
+    if (!m_boards[static_cast<size_t>(index(otherSide(attacker)))].allSunk())
         return false;
 
     m_phase = Phase::Finished;
-    emit finished(side);
+    emit finished(attacker);
     return true;
 }
 

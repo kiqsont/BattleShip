@@ -23,6 +23,7 @@ struct CellVisual {
     Kind kind = Kind::Empty;
     ShipType ship = ShipType::Submarine;
     Direction direction = Direction::Down;
+    bool sunk = false; ///< 该格所属舰船是否已沉没（齐射命中时决定要不要暴露船型）
 };
 
 /// 棋盘格控件。旧版 button 类有 6 个 public bool 供外部随意改写，

@@ -420,12 +420,71 @@ ctest --test-dir build          # tst_board 10 项 + tst_gamesession 8 项 + tst
 | P0-8 | 方向输入非法时按默认方向处理，但已加占位提示说明 |
 | P0-9 | 所有子控件都有 parent，随主窗口析构 |
 
-### 有意保留的旧行为（未擅自改动）
+### 曾保留、现已在第二轮对齐的旧行为
 
-- 删除框的 X 作用于**列**、Y 作用于**行**，与放置框相反（`PlacementView::deleteShip` 中有注释）。
-- 齐射输入 1 个单位 = 5 格预算（`rules::kCellsPerVolleyUnit`）。
-- 命中使预算 +1、落空才换手。
-- 空棋盘开局即判定"全部击沉"。
+第一轮重构时这四条按"不明语义先不动"处理，第二轮已依据设计文档 `Battle Ship.docx` 修正，详见下一节。
 
-以上四条仍需你确认是否为设计意图，确认后可再做一轮小改。
+---
+
+## 八、第二轮：按设计文档对齐规则（2026-11-03）
+
+### 依据
+
+`Battle Ship.docx` 中的规则原文：
+
+| 原文 | 结论 |
+|---|---|
+| 「一起扫射：攻击五处」「一同扫射：选五个位置」 | 一次扫射固定覆盖 **5 格**，界面输入框填的是**次数** |
+| 「每再击沉一艘舰，得一次一起扫射」 | 只有**击沉**才累积次数，命中不算 |
+| 「Player选择位置进攻」「若击中，记录并标记战舰类型」 | 攻击的是**对方**海域，胜利判给攻击方 |
+| 「一同扫射：击中后不显示具体船只 除非击沉」 | 齐射命中显示通用标记，只有该舰沉没才暴露船型 |
+
+### 改动
+
+1. **攻击目标**（`GameSession::fireAt` / `fireVolley` / `checkVictory`）
+   改为攻击 `board(otherSide(attacker))`；`cellChanged` 携带的是棋盘归属方，
+   界面按归属方刷新。胜负改为"打光对方舰队 → 攻击方获胜"。
+   界面侧 `BattleView::cellInteractive` 只允许点对方海域，自己的棋盘不可交互。
+
+2. **扫射次数模型**（`GameSession`）
+   `budget`（以 -1 为哨兵的"预算"）→ `volleyCredits`（从 0 起的"次数"）。
+   击沉 +1；落空清零并换手；发射后按次数扣减。
+
+3. **一次扫射 = 5 格**
+   `rules::kCellsPerVolleyUnit` → `kCellsPerVolley`；`TurnBar` 文案与 tooltip 明确
+   "输入本次使用几次扫射，每次覆盖 5 格"，`requestedUnits` → `requestedVolleys`。
+
+4. **齐射命中贴图**
+   `CellView` 增加 `sunk`；`CellVisual` 增加 `sunk`。齐射命中未击沉时显示通用爆点，
+   击沉后才显示船型（原来的"潜水艇特例"删除）。
+
+5. **删除框坐标轴统一**
+   删除框改为 X = 行、Y = 列，与放置框一致（原实现相反）。
+
+6. **顺带修复**
+   齐射选中标记会同时渲染到两块棋盘上（`visualFor` 未判断棋盘归属），已修正。
+
+### 回退点
+
+若某一条与预期不符，可单独回退，互不牵连：
+
+| 想恢复的旧行为 | 改哪里 |
+|---|---|
+| 攻击自己棋盘 | `GameSession::fireAt` 与 `fireVolley` 里的 `index(otherSide(attacker))` → `index(attacker)`；`BattleView::cellInteractive` 的 `boardOwner == attacker` 判断 |
+| 命中即累积次数 | `GameSession::fireAt` 里 `result == ShotResult::Sunk` → `result != ShotResult::Miss` |
+| 齐射命中显示船型 | `CellButton::applyIcon` 的 `VolleyHit` 分支 |
+| 删除框 X = 列 | `PlacementView::deleteShip` 的 `readCoord(...)` 实参顺序 |
+
+### 测试
+
+第二轮后共 3 个测试目标、27 项断言：`tst_board` 10 项、`tst_gamesession` 10 项
+（新增攻击方向、击沉才计次、5 格换算、胜负归属）、`tst_ui` 7 项（新增删除坐标轴一致性、
+自己的海域不可点击）。
+
+### 仍未处理
+
+- 齐射过程中击沉的舰是否也应累积次数：设计文档未明确，当前沿用旧版（不累积）。
+- `resources/Image/GameBackground.png` 仍无引用，待决定补进 qrc 或移除。
+- Qt6 迁移（独立分支）。
+
 

@@ -31,22 +31,22 @@ signals:
 
 private:
     void refreshAll();
-    void refreshBoard(Side side);
-    void refreshCell(Side side, Coord coord);
+    void refreshBoard(Side boardOwner);
+    void refreshCell(Side boardOwner, Coord coord);
     void refreshBar(Side side);
-    CellVisual visualFor(Side side, Coord coord) const;
-    bool cellInteractive(Side side, Coord coord) const;
+    CellVisual visualFor(Side boardOwner, Coord coord) const;
+    bool cellInteractive(Side boardOwner, Coord coord) const;
 
-    void onCellActivated(Side side, Coord coord);
-    void onArm(Side side);
-    void onFire(Side side);
-    void onCancel(Side side);
+    void onCellActivated(Side boardOwner, Coord coord);
+    void onArm(Side attacker);
+    void onFire(Side attacker);
+    void onCancel(Side attacker);
     void onFinished(Side winner);
 
     GameSession* m_session = nullptr;
     BoardWidget* m_boards[kSideCount] = {nullptr, nullptr};
     TurnBar* m_bars[kSideCount] = {nullptr, nullptr};
-    QSet<int> m_volleyHits[kSideCount]; ///< 齐射命中的格子，仅用于选择贴图
+    QSet<int> m_volleyHits[kSideCount]; ///< 齐射命中的格子（按棋盘归属），仅用于选择贴图
     bool m_finishedHandled = false;
 };
 

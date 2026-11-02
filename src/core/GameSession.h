@@ -11,9 +11,12 @@
 
 namespace bs {
 
-/// 对局状态机：谁在行动、还剩多少扫射预算、选中了哪些格子、胜负如何。
-/// 旧版把这些状态散成 turn / togeShoot1 / togeShoot2 / choic1 / choic2 /
-/// Shoot1 / Shoot2 / time1 / time2 九个字段外加两个"只用来发信号"的 label。
+/// 对局状态机：谁在行动、还剩几次"一起扫射"、选中了哪些格子、胜负如何。
+///
+/// 规则依据（Battle Ship.docx）：
+/// - "Player选择位置进攻" —— 每回合攻击的是**对方**海域；
+/// - "每再击沉一艘舰，得一次一起扫射" —— 只有击沉才累积次数，命中不算；
+/// - 一次"一起扫射"覆盖 5 格，命中后不显示具体船型，除非该舰被击沉。
 class GameSession : public QObject
 {
     Q_OBJECT
@@ -29,39 +32,40 @@ public:
     Phase phase() const { return m_phase; }
     Side currentSide() const { return m_current; }
 
-    /// 用当前已布置的舰队开一局：清空命中状态、预算与选中，回到 Player1 行动。
+    /// 用当前已布置的舰队开一局：清空命中状态、扫射次数与选中，回到 Player1 行动。
     void beginBattle();
     /// 离开对战（回主菜单），保留布置。
     void leaveBattle();
 
-    int budget(Side side) const;             ///< 剩余扫射预算，-1 表示本回合未累积
+    /// 剩余"一起扫射"次数（本回合内有效，落空即清零）。
+    int volleyCredits(Side side) const;
     bool isVolleyArmed(Side side) const;
-    int volleyTarget(Side side) const;       ///< 本轮需要选中的格数
-    int volleyRemaining(Side side) const;    ///< 还需要选中的格数
-    int volleyCost(Side side) const;         ///< 发射将扣掉的预算
+    int volleyTarget(Side side) const;    ///< 本轮需要选中的总格数
+    int volleyRemaining(Side side) const; ///< 还需要选中的格数
+    int volleyCost(Side side) const;      ///< 发射将扣掉的次数
     int selectedCount(Side side) const;
     bool isSelected(Side side, Coord coord) const;
     bool isSelectable(Side side, Coord coord) const;
     std::vector<Coord> selectedCells(Side side) const;
 
-    /// 单发：点自己海域的一格。命中则预算 +1 并继续行动，落空则换手。
-    ShotResult fireAt(Side side, Coord coord);
+    /// 单发：attacker 点击对方海域的一格。落空换手，击沉则累积一次扫射。
+    ShotResult fireAt(Side attacker, Coord coord);
 
-    /// 瞄准（一同扫射）：units 为界面输入的"格数单位"，内部按 kCellsPerVolleyUnit 换算。
-    bool armVolley(Side side, int units);
-    bool toggleSelection(Side side, Coord coord);
-    void cancelVolley(Side side);
+    /// 瞄准（一同扫射）：volleys 为要使用的扫射次数，内部按 kCellsPerVolley 换算格数。
+    bool armVolley(Side attacker, int volleys);
+    bool toggleSelection(Side attacker, Coord coord);
+    void cancelVolley(Side attacker);
 
     struct VolleyOutcome {
         int hits = 0;
         int cost = 0;
     };
-    VolleyOutcome fireVolley(Side side);
+    VolleyOutcome fireVolley(Side attacker);
 
 signals:
     void battleStarted();
     void turnChanged(bs::Side side);
-    void cellChanged(bs::Side side, bs::Coord coord);
+    void cellChanged(bs::Side boardOwner, bs::Coord coord);
     void sideStateChanged(bs::Side side);
     void finished(bs::Side winner);
 
@@ -69,10 +73,10 @@ private:
     void resetRuntime(Side side);
     void resetAllRuntime();
     void switchTurn(Side to);
-    bool checkVictory(Side side);
+    bool checkVictory(Side attacker);
 
     std::array<Board, kSideCount> m_boards;
-    std::array<int, kSideCount> m_budget;
+    std::array<int, kSideCount> m_volleyCredits;
     std::array<bool, kSideCount> m_armed;
     std::array<int, kSideCount> m_target;
     std::array<int, kSideCount> m_remaining;

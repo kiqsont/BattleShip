@@ -22,6 +22,7 @@ class UiTest : public QObject
 private slots:
     void mainWindowBuildsMenu();
     void placementWiresInputsToBoard();
+    void deleteUsesSameAxisAsPlacement();
     void battleCellClickReachesSession();
     void restartingBattleDoesNotDuplicateCells();
 };
@@ -86,10 +87,36 @@ void UiTest::placementWiresInputsToBoard()
     QCOMPARE(session.board(Side::Player1).remainingToPlace(ShipType::Battleship), 0);
 }
 
+void UiTest::deleteUsesSameAxisAsPlacement()
+{
+    GameSession session;
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player1);
+
+    const auto edits = view.findChildren<QLineEdit*>();
+    // 4 行船只各 3 个输入框，之后是删除行的行/列
+    QCOMPARE(edits.size(), 15);
+
+    // 放置在(行1, 列2)
+    edits.at(0)->setText(QStringLiteral("1"));
+    edits.at(1)->setText(QStringLiteral("2"));
+    firstByText<QPushButton>(&view, QStringLiteral("放置"))->click();
+    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(0, 1)));
+
+    // 删除框用同样的 X=行 / Y=列
+    edits.at(12)->setText(QStringLiteral("1"));
+    edits.at(13)->setText(QStringLiteral("2"));
+    firstByText<QPushButton>(&view, QStringLiteral("删除"))->click();
+
+    QVERIFY(!session.board(Side::Player1).hasShipAt(Coord(0, 1)));
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 0);
+}
+
 void UiTest::battleCellClickReachesSession()
 {
     GameSession session;
-    session.board(Side::Player1).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
+    // 对方海域放一艘战舰
+    session.board(Side::Player2).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
 
     ui::BattleView view(&session);
     view.startBattle();
@@ -97,22 +124,26 @@ void UiTest::battleCellClickReachesSession()
     const auto boards = view.findChildren<ui::BoardWidget*>();
     QCOMPARE(boards.size(), 2);
 
-    ui::CellButton* cell = cellAt(boards.at(0), Coord(0, 0));
+    // Player1 回合：只能打对方海域
+    QVERIFY(!cellAt(boards.at(0), Coord(3, 3))->isInteractive());
+
+    ui::CellButton* cell = cellAt(boards.at(1), Coord(0, 0));
     QVERIFY(cell != nullptr);
     QVERIFY(cell->isInteractive());
 
     sendClick(cell);
 
-    QVERIFY(session.board(Side::Player1).isResolved(Coord(0, 0)));
-    QCOMPARE(session.budget(Side::Player1), 0);
-    // 命中不换手
+    QVERIFY(session.board(Side::Player2).isResolved(Coord(0, 0)));
+    QVERIFY(!session.board(Side::Player1).isResolved(Coord(0, 0)));
+    // 命中不换手，且只有击沉才累积扫射次数
     QCOMPARE(session.currentSide(), Side::Player1);
+    QCOMPARE(session.volleyCredits(Side::Player1), 0);
 }
 
 void UiTest::restartingBattleDoesNotDuplicateCells()
 {
     GameSession session;
-    session.board(Side::Player1).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
+    session.board(Side::Player2).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
 
     ui::BattleView view(&session);
     view.startBattle();
@@ -127,4 +158,5 @@ void UiTest::restartingBattleDoesNotDuplicateCells()
 }
 
 QTEST_MAIN(UiTest)
+
 #include "tst_ui.moc"

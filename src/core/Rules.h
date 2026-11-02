@@ -27,8 +27,10 @@ int initialCount(ShipType type);
 /// 编制总数，旧版为 1 + 2 + 4 + 2 = 9。
 int totalShipCount();
 
-/// 瞄准输入 1 个单位 = 5 格预算。这是旧版沿用的换算，见 REFACTORING_PLAN 待确认项。
-constexpr int kCellsPerVolleyUnit = 5;
+/// 一次"一起扫射"覆盖的格数。
+/// 设计文档（Battle Ship.docx）："一起扫射：攻击五处"、"一同扫射：选五个位置"。
+/// 界面上的输入框填的是"扫射次数"，不是格数。
+constexpr int kCellsPerVolley = 5;
 
 } // namespace rules
 } // namespace bs

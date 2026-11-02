@@ -148,13 +148,13 @@ QWidget* PlacementView::buildDeleteRow()
     layout->addWidget(makeFixedLabel(QString(), 52, rowWidget));
 
     m_deleteX = makeNumberEdit(rowWidget);
-    m_deleteX->setPlaceholderText(QStringLiteral("列"));
-    m_deleteX->setToolTip(QStringLiteral("列号，1-10"));
+    m_deleteX->setPlaceholderText(QStringLiteral("行"));
+    m_deleteX->setToolTip(QStringLiteral("要删除的船所在行号，1-10"));
     layout->addWidget(m_deleteX);
 
     m_deleteY = makeNumberEdit(rowWidget);
-    m_deleteY->setPlaceholderText(QStringLiteral("行"));
-    m_deleteY->setToolTip(QStringLiteral("行号，1-10"));
+    m_deleteY->setPlaceholderText(QStringLiteral("列"));
+    m_deleteY->setToolTip(QStringLiteral("要删除的船所在列号，1-10"));
     layout->addWidget(m_deleteY);
 
     auto* filler = makeNumberEdit(rowWidget);
@@ -273,10 +273,9 @@ void PlacementView::deleteShip()
     if (m_deleteX->text().isEmpty() || m_deleteY->text().isEmpty())
         return;
 
-    // 注意：旧版删除框的 X 作用于"列"、Y 作用于"行"，与放置框相反。
-    // 这里原样保留以免改变现有操作习惯，详见 docs/REFACTORING_PLAN.md 的待确认项。
+    // 与放置框保持一致：X = 行，Y = 列。
     bool ok = false;
-    const Coord coord = readCoord(m_deleteY, m_deleteX, &ok);
+    const Coord coord = readCoord(m_deleteX, m_deleteY, &ok);
     if (!ok || !m_session->board(m_side).removeShipAt(coord)) {
         showPlacementError(PlacementError::NoShipAtCoord, ShipType::Submarine);
         return;

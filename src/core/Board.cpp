@@ -162,6 +162,7 @@ CellView Board::view(Coord coord) const
     const Ship& ship = m_ships[static_cast<size_t>(index)];
     result.occupied = true;
     result.isHead = (ship.head() == coord);
+    result.sunk = ship.isSunk();
     result.type = ship.type();
     result.direction = ship.direction();
     return result;
