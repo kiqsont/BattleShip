@@ -1,0 +1,22 @@
+<RCC>
+    <qresource prefix="/">
+        <file>Image/StartBackground.png</file>
+        <file>Image/RuleInstruction1.png</file>
+        <file>Image/RuleInstruction2.png</file>
+        <file>Image/RuleInstruction3.png</file>
+        <file>Image/RuleInstruction4.png</file>
+        <file>Image/RuleInstruction5.png</file>
+        <file>Image/RuleInstruction6.png</file>
+        <file>Image/RuleInstruction7.png</file>
+        <file>Image/trace.png</file>
+        <file>Image/BasicSquare.png</file>
+        <file>Image/ShipBody.png</file>
+        <file>Image/ShipHead.png</file>
+        <file>Image/B.png</file>
+        <file>Image/Cruiser.png</file>
+        <file>Image/D.png</file>
+        <file>Image/S.png</file>
+        <file>Image/Miss.png</file>
+        <file>Image/togeShoot.png</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,14 @@
+debug/button.o
+debug/configuration.o
+debug/game.o
+debug/label.o
+debug/main.o
+debug/rulescene.o
+debug/widget.o
+debug/qrc_res.o
+debug/moc_button.o
+debug/moc_configuration.o
+debug/moc_game.o
+debug/moc_label.o
+debug/moc_rulescene.o
+debug/moc_widget.o

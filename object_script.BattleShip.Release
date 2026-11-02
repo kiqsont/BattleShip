@@ -1,0 +1,14 @@
+release/button.o
+release/configuration.o
+release/game.o
+release/label.o
+release/main.o
+release/rulescene.o
+release/widget.o
+release/qrc_res.o
+release/moc_button.o
+release/moc_configuration.o
+release/moc_game.o
+release/moc_label.o
+release/moc_rulescene.o
+release/moc_widget.o
