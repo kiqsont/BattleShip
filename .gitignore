@@ -1,0 +1,39 @@
+# ---- Qt Creator / qmake ----
+*.pro.user
+*.pro.user.*
+.qmake.stash
+Makefile
+Makefile.*
+object_script.*
+ui_*.h
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+
+# ---- 构建输出 ----
+build/
+build-*/
+cmake-build-*/
+debug/
+release/
+*.o
+*.obj
+*.exe
+*.dll
+*.a
+*.so
+*.so.*
+
+# ---- IDE / 编辑器 ----
+.vs/
+.idea/
+.vscode/
+CMakeLists.txt.user*
+
+# ---- 工具本地数据 ----
+.workbuddy/
+
+# ---- 系统 ----
+Thumbs.db
+.DS_Store
+desktop.ini
