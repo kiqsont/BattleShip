@@ -371,3 +371,61 @@ MainWindow (QStackedWidget)
 | P3 | `GameSession` + 状态机，P0-1~P0-4 修复 | ⚠️ 修 bug（预期） | `tst_gamesession` 全绿、连点开始不增殖 |
 | P4 | `MainWindow` + `QStackedWidget` | ✅ | 窗口不跳变、无跨对象裸数组 |
 | P5 | CMake + 格式化 + CI（+ Qt6 可选） | ✅ | 一键构建与测试 |
+
+---
+
+## 七、执行记录（2026-11-03）
+
+### 已完成
+
+| 阶段 | 状态 | 结果 |
+|---|---|---|
+| P0 基线 | ✅ | 新增 `.gitignore`；13 个生成文件停止跟踪；原始代码保留于 tag `v0-legacy`；旧版 qmake 可编译验证通过 |
+| P1 core 层 | ✅ | 新增 `src/core/{Types,Rules,Ship,Board,GameSession}`；`seaArray` 与 4 个 `SetShipXxx`、4 个 `DeleteXxx`、`handleDirection`、`tranformNum/Str` 全部消失 |
+| P2 控件统一 | ✅ | `button` → `CellButton`（6 个 public bool → `CellVisual` + `setInteractive`）；`BoardWidget` 接管两处 10×10 手工布局；`label` 类删除 |
+| P3 对战状态机 | ✅ | `GameSession` 接管回合/预算/选中/胜负；`Game` 的 543 行构造函数改为 `BattleView` 约 200 行纯渲染 |
+| P4 导航 | ✅ | `MainWindow` + `QStackedWidget`；`Widget` 的 4 个窗口指针与 6 处 `setGeometry` 复制全部删除；无跨对象裸数组 |
+| P5 工程化 | ⚠️ 部分 | CMake（app/ui/core 三层 + 3 个测试目标）完成；`.clang-format` 完成；Qt6 迁移未做（独立分支，见第五节风险表） |
+
+**构建与测试现状**（Qt 5.14.2 / MinGW 7.3 / CMake 3.24）：
+
+```
+cmake -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH=<Qt路径> -B build
+cmake --build build
+ctest --test-dir build          # tst_board 10 项 + tst_gamesession 8 项 + tst_ui 5 项，全绿
+```
+`.pro` 保留可用（qmake + mingw32-make 已验证）。
+
+### 与计划的偏差（均已在代码中注明）
+
+1. **窗口尺寸统一为 480×900**（原为 460×740 与 480×900 混用）。主菜单/布置/规则页内容居中，对战页铺满。
+2. **删除改为"整艘移除"**。旧版点船体格只会清掉那一格，剩余船体变成永久占位且无法再删除；现在按"该格属于哪艘船"整体移除。
+3. **布置改为"先整体校验再落子"**。旧版边写边校验，中途失败会留下半截船体。
+4. **补齐坐标越界校验**。旧版删除/布置只校验行不校验列，输入 15 会写到数组外。
+5. **规则页保留 `.ui`**。内容为 7 张图片 + 大量绝对定位文字，重建收益低于风险，仅把类名改为 `RulesView`。
+6. **行动条按回合禁用**。旧版非当前回合的"瞄准/启动"仍可点击（点了也没效果），现在直接置灰。
+7. **布置输入框增加了占位提示**（行/列/方向），交互方式未变。
+
+### 修复的缺陷
+
+| 编号 | 说明 |
+|---|---|
+| P0-1 | 控件只创建一次；开新局走 `GameSession::beginBattle()`，连点"开始"不再堆叠控件 |
+| P0-2 | 玩家 2 的选中/取消信号接错到玩家 1 的按钮，已修正（由 `Side` 参数消歧） |
+| P0-3 | `times2` 显示玩家 1 预算的复制粘贴残留，随状态收敛自然消失 |
+| P0-4 | `label(1)/label(2)` 空信号发射器删除，"满员"改为 `volleyRemaining == 0` 派生状态 |
+| P0-5 | 窗口尺寸统一 |
+| P0-6 | 删除后输入框统一清空 |
+| P0-7 | 贴图统一按 40×40 缩放并缓存 |
+| P0-8 | 方向输入非法时按默认方向处理，但已加占位提示说明 |
+| P0-9 | 所有子控件都有 parent，随主窗口析构 |
+
+### 有意保留的旧行为（未擅自改动）
+
+- 删除框的 X 作用于**列**、Y 作用于**行**，与放置框相反（`PlacementView::deleteShip` 中有注释）。
+- 齐射输入 1 个单位 = 5 格预算（`rules::kCellsPerVolleyUnit`）。
+- 命中使预算 +1、落空才换手。
+- 空棋盘开局即判定"全部击沉"。
+
+以上四条仍需你确认是否为设计意图，确认后可再做一轮小改。
+
