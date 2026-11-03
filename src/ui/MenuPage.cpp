@@ -5,8 +5,6 @@
 #include "ui/Theme.h"
 
 #include <QBoxLayout>
-#include <QFrame>
-#include <QLabel>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QResizeEvent>
@@ -15,108 +13,46 @@ namespace bs {
 namespace ui {
 namespace {
 
-constexpr int kPanelMaxWidth = 460; ///< 条目最长宽度，再宽就不好扫视了
-constexpr int kSidePadding = 34;    ///< 面板内容的最小左右边距
-constexpr int kWideThreshold = 760; ///< 超过这个宽度改成左右分栏
-constexpr int kPanelShare = 44;     ///< 分栏时右侧面板占宽度的百分比
-
-QString white(int alpha = 255)
-{
-    return QStringLiteral("rgba(250, 248, 242, %1)").arg(alpha);
-}
+constexpr int kWideThreshold = 760;      ///< 超过这个宽度改成左右分栏
+constexpr int kPanelShare = 44;          ///< 分栏时右侧暗场占宽度的百分比
+constexpr int kVerticalButtonWidth = 280; ///< 竖排时按钮列宽度
+constexpr int kColumnPad = 36;           ///< 分栏时按钮两侧内边距
+constexpr int kBottomMargin = 64;        ///< 竖排时按钮列离底边的距离
 
 } // namespace
-
-MenuPanel::MenuPanel(QWidget* parent)
-    : QWidget(parent)
-{
-    m_layout = new QVBoxLayout(this);
-    m_layout->setContentsMargins(kSidePadding, 30, kSidePadding, 28);
-    m_layout->setSpacing(0);
-
-    // 分栏模式下内容需要垂直居中，两端各留一段弹性空白；
-    // 竖排模式下面板高度由内容决定，这两段不起作用。
-    m_layout->addStretch(0);
-
-    auto* caps = new QLabel(QStringLiteral("NAVAL COMBAT · 10 × 10"), this);
-    caps->setFont(theme::capsFont(10));
-    caps->setStyleSheet(QStringLiteral("color:%1;").arg(white(120)));
-    m_layout->addWidget(caps);
-
-    m_layout->addSpacing(10);
-
-    auto* title = new QLabel(QStringLiteral("海 战 棋"), this);
-    title->setFont(theme::displayFont(32));
-    title->setStyleSheet(QStringLiteral("color:%1;").arg(white()));
-    m_layout->addWidget(title);
-
-    m_layout->addSpacing(14);
-
-    auto* bar = new QFrame(this);
-    bar->setFixedSize(46, 3);
-    bar->setStyleSheet(QStringLiteral("background:%1; border:none;").arg(theme::sealRed().name()));
-    m_layout->addWidget(bar);
-
-    m_layout->addSpacing(22);
-
-    m_entries = new QVBoxLayout;
-    m_entries->setContentsMargins(0, 0, 0, 0);
-    m_entries->setSpacing(0);
-    m_layout->addLayout(m_entries);
-
-    m_layout->addStretch(0);
-}
-
-MenuButton* MenuPanel::addEntry(const QString& text)
-{
-    auto* button = new MenuButton(m_count++, text, this);
-    m_entries->addWidget(button);
-    return button;
-}
-
-void MenuPanel::resizeEvent(QResizeEvent* event)
-{
-    QWidget::resizeEvent(event);
-    // 宽窗口下把内容收到中间，条目不会被拉成一整行
-    const int side = qMax(kSidePadding, (width() - kPanelMaxWidth) / 2);
-    if (m_layout->contentsMargins().left() != side)
-        m_layout->setContentsMargins(side, 30, side, 28);
-}
-
-void MenuPanel::paintEvent(QPaintEvent*)
-{
-    QPainter painter(this);
-    painter.fillRect(rect(), theme::ink());
-
-    // 与封面相接的那条极细亮线：竖排在上面，分栏在左侧
-    painter.setPen(QPen(QColor(250, 248, 242, 40), 1));
-    if (height() >= width())
-        painter.drawLine(0, 0, 0, height());
-    else
-        painter.drawLine(0, 0, width(), 0);
-}
 
 MenuPage::MenuPage(QWidget* parent)
     : QWidget(parent)
 {
+    // 竖排时：上方留弹性空白把按钮列压到底部暗场；宽窗口时整体改为左右分栏。
     m_layout = new QBoxLayout(QBoxLayout::TopToBottom, this);
     m_layout->setContentsMargins(0, 0, 0, 0);
     m_layout->setSpacing(0);
     m_layout->addStretch(1);
 
-    buildPanel();
-    m_layout->addWidget(m_panel, 0);
+    buildButtons();
+    m_layout->addWidget(m_buttons, 0, Qt::AlignHCenter);
 }
 
-void MenuPage::buildPanel()
+void MenuPage::buildButtons()
 {
-    m_panel = new MenuPanel(this);
+    m_buttons = new QWidget(this);
+    auto* col = new QVBoxLayout(m_buttons);
+    col->setContentsMargins(0, 0, 0, 0);
+    col->setSpacing(14);
+    col->addStretch(1);
 
-    MenuButton* start = m_panel->addEntry(QStringLiteral("开始"));
-    MenuButton* player1 = m_panel->addEntry(QStringLiteral("Player1"));
-    MenuButton* player2 = m_panel->addEntry(QStringLiteral("Player2"));
-    MenuButton* rules = m_panel->addEntry(QStringLiteral("规则说明"));
-    MenuButton* quit = m_panel->addEntry(QStringLiteral("退出"));
+    MenuButton* start = new MenuButton(QStringLiteral("开始"), m_buttons);
+    MenuButton* player1 = new MenuButton(QStringLiteral("Player1"), m_buttons);
+    MenuButton* player2 = new MenuButton(QStringLiteral("Player2"), m_buttons);
+    MenuButton* rules = new MenuButton(QStringLiteral("规则说明"), m_buttons);
+
+    col->addWidget(start);
+    col->addWidget(player1);
+    col->addWidget(player2);
+    col->addWidget(rules);
+
+    col->addStretch(1);
 
     connect(start, &QPushButton::clicked, this, &MenuPage::startRequested);
     connect(player1, &QPushButton::clicked, this,
@@ -124,7 +60,6 @@ void MenuPage::buildPanel()
     connect(player2, &QPushButton::clicked, this,
             [this] { emit placementRequested(Side::Player2); });
     connect(rules, &QPushButton::clicked, this, &MenuPage::rulesRequested);
-    connect(quit, &QPushButton::clicked, this, &MenuPage::quitRequested);
 }
 
 void MenuPage::resizeEvent(QResizeEvent* event)
@@ -137,13 +72,18 @@ void MenuPage::resizeEvent(QResizeEvent* event)
         m_layout->setDirection(wide ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
     }
 
+    auto* col = qobject_cast<QVBoxLayout*>(m_buttons->layout());
     if (wide) {
         m_layout->setStretch(0, 1);
         m_layout->setStretch(1, 0);
-        m_panel->setFixedWidth(qBound(360, width() * kPanelShare / 100, 520));
-    } else if (m_panel->minimumWidth() != 0) {
-        m_panel->setMinimumWidth(0);
-        m_panel->setMaximumWidth(QWIDGETSIZE_MAX);
+        const int panelWidth = qBound(360, width() * kPanelShare / 100, 520);
+        m_buttons->setFixedWidth(panelWidth);
+        if (col)
+            col->setContentsMargins(kColumnPad, 0, kColumnPad, 0);
+    } else {
+        m_buttons->setFixedWidth(kVerticalButtonWidth);
+        if (col)
+            col->setContentsMargins(0, 0, 0, kBottomMargin);
     }
 
     update();
@@ -161,8 +101,8 @@ void MenuPage::paintEvent(QPaintEvent*)
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
     if (m_horizontal) {
-        // 左右分栏：封面铺满面板左侧那片区域，避免放大过头导致画面发糊
-        const int panelLeft = qMax(1, m_panel->geometry().left());
+        // 左右分栏：封面铺满按钮列左侧那片区域，避免放大过头导致画面发糊
+        const int panelLeft = qMax(1, m_buttons->geometry().left());
         const qreal scale = qMax(qreal(height()) / art.height(),
                                  qreal(panelLeft + 8) / art.width());
         const QSize target = art.size() * scale;

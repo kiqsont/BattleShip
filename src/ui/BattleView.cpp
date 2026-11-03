@@ -1,28 +1,54 @@
 #include "ui/BattleView.h"
 
 #include "ui/BoardWidget.h"
+#include "ui/GameControls.h"
+#include "ui/Theme.h"
 #include "ui/TurnBar.h"
 
+#include <QHBoxLayout>
 #include <QMessageBox>
+#include <QPainter>
 #include <QVBoxLayout>
 
 namespace bs {
 namespace ui {
+namespace {
+
+/// 分割线上下各留一点呼吸空间，避免和棋盘格线粘在一起。
+constexpr int kDividerGap = 5;
+
+/// 两块棋盘之间的墨色分割线：取代原来的 1..10 列号标尺行。
+class DividerLine : public QWidget
+{
+public:
+    using QWidget::QWidget;
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), theme::ink());
+    }
+};
+
+} // namespace
 
 BattleView::BattleView(GameSession* session, QWidget* parent)
     : QWidget(parent)
     , m_session(session)
 {
-    auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 4, 0, 4);
-    layout->setSpacing(4);
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(8, 6, 8, 6);
+    outer->setSpacing(0);
+    // 不允许布局把自己的最小尺寸写回窗口，窗口始终按 MainWindow 的尺寸走。
+    outer->setSizeConstraint(QLayout::SetNoConstraint);
 
     for (int i = 0; i < kSideCount; ++i) {
         const Side side = sideOf(i);
-
         m_bars[i] = new TurnBar(side, this);
         m_boards[i] = new BoardWidget(this);
-        m_boards[i]->setGridLabelsVisible(false);
+        // 对战页：去掉棋盘周围所有 1..10 数字，格子随窗口按比例伸缩、铺满可用区域。
+        m_boards[i]->setScalable(true);
 
         connect(m_boards[i], &BoardWidget::cellActivated, this,
                 [this, side](Coord coord) { onCellActivated(side, coord); });
@@ -31,16 +57,33 @@ BattleView::BattleView(GameSession* session, QWidget* parent)
         connect(m_bars[i], &TurnBar::cancelRequested, this, [this, side] { onCancel(side); });
     }
 
-    // 版面顺序：Player1 行动条 / 棋盘 / 留白 / 棋盘 / Player2 行动条
-    layout->addWidget(m_bars[0], 0, Qt::AlignHCenter);
-    layout->addWidget(m_boards[0], 0, Qt::AlignHCenter);
-    layout->addStretch(1);
-    layout->addWidget(m_boards[1], 0, Qt::AlignHCenter);
-    layout->addWidget(m_bars[1], 0, Qt::AlignHCenter);
+    auto* divider = new DividerLine(this);
+    divider->setObjectName(QStringLiteral("boardDivider"));
+    divider->setFixedHeight(2);
+    divider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    connect(m_session, &GameSession::cellChanged, this, [this](Side boardOwner, Coord coord) {
-        refreshCell(boardOwner, coord);
-    });
+    // 顶部工具区：Player1 行动条 + 右侧返回按钮，不单独占一行。
+    auto* top = new QHBoxLayout;
+    top->setContentsMargins(0, 0, 0, 0);
+    top->setSpacing(6);
+    top->addWidget(m_bars[0], 1);
+    auto* back = new ThemeButton(QStringLiteral("返回主菜单"), this);
+    back->setFixedWidth(96);
+    top->addWidget(back, 0);
+    connect(back, &ThemeButton::clicked, this, &BattleView::exitRequested);
+
+    // 按比例分配：两条工具区各 1 份，两块棋盘各 9 份，中间只留一条分割线。
+    // 没有滚动区，窗口多大棋盘就按比例铺多大。
+    outer->addLayout(top, 1);
+    outer->addWidget(m_boards[0], 9);
+    outer->addSpacing(kDividerGap);
+    outer->addWidget(divider, 0);
+    outer->addSpacing(kDividerGap);
+    outer->addWidget(m_boards[1], 9);
+    outer->addWidget(m_bars[1], 1);
+
+    connect(m_session, &GameSession::cellChanged, this,
+            [this](Side boardOwner, Coord coord) { refreshCell(boardOwner, coord); });
     connect(m_session, &GameSession::sideStateChanged, this, [this](Side side) {
         refreshBar(side);
         refreshBoard(side);
@@ -132,6 +175,10 @@ void BattleView::refreshBar(Side side)
     bar->setActive(active);
     bar->setVolleyCredits(m_session->volleyCredits(side));
     bar->setArmed(m_session->isVolleyArmed(side));
+    if (m_session->isVolleyArmed(side))
+        bar->setProgress(m_session->selectedCount(side), m_session->volleyTarget(side));
+    else
+        bar->setProgress(0, 0);
 }
 
 void BattleView::refreshAll()
@@ -197,8 +244,8 @@ void BattleView::onFinished(Side winner)
     m_finishedHandled = true;
 
     refreshAll();
-    QMessageBox::information(this, QStringLiteral("Congratulations"),
-                             QStringLiteral("恭喜玩家%1取得胜利").arg(index(winner) + 1),
+    QMessageBox::information(this, QStringLiteral("对局结束"),
+                             QStringLiteral("恭喜 %1 取得胜利").arg(sideTitle(winner)),
                              QMessageBox::Close);
     emit exitRequested();
 }

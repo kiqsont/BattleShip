@@ -7,13 +7,14 @@
 
 class QLabel;
 class QLineEdit;
-class QPushButton;
 
 namespace bs {
 namespace ui {
 
-/// 一侧玩家的行动条：剩余扫射次数、本次使用次数、瞄准 / 启动 / 取消、命中反馈。
-/// 旧版把这一整套控件（含重叠摆放的 hit 标签）在 Game 构造函数里手工建了两遍。
+class ThemeButton;
+
+/// 一侧玩家的紧凑行动条：扫射次数、本次使用次数、瞄准 / 开火 / 取消、命中与选格反馈。
+/// 单行排布、固定高度 36px，避免在对战页里占掉两块棋盘之间的版面。
 class TurnBar : public QWidget
 {
     Q_OBJECT
@@ -25,6 +26,8 @@ public:
     void setActive(bool active);
     void setArmed(bool armed);
     void setHits(int hits);
+    /// 瞄准阶段在次数标签上显示"已选 n / m"，target <= 0 时恢复"扫射 n 次"。
+    void setProgress(int selected, int target);
     void clearHits();
     void clearInput();
 
@@ -36,15 +39,20 @@ signals:
     void fireRequested();
     void cancelRequested();
 
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
 private:
     void updateButtons();
+    void restoreCredits();
 
     Side m_side;
+    QLabel* m_title = nullptr;
     QLabel* m_creditsLabel = nullptr;
     QLineEdit* m_input = nullptr;
-    QPushButton* m_arm = nullptr;
-    QPushButton* m_fire = nullptr;
-    QPushButton* m_cancel = nullptr;
+    ThemeButton* m_arm = nullptr;
+    ThemeButton* m_fire = nullptr;
+    ThemeButton* m_cancel = nullptr;
     QLabel* m_hit = nullptr;
 
     int m_credits = 0;

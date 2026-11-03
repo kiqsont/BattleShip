@@ -52,7 +52,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_rules = new RulesView(this);
 
     m_placementPage = wrapCentered(m_placement, 520);
-    m_battlePage = wrapCentered(m_battle, 540);
+    // 对战页固定竖排，铺满窗口宽度：两块 424px 棋盘需要完整宽度才不会出现水平滚动条。
+    m_battlePage = m_battle;
 
     m_stack->addWidget(m_menuPage);
     m_stack->addWidget(m_placementPage);
@@ -62,7 +63,6 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_menuPage, &MenuPage::startRequested, this, &MainWindow::startBattle);
     connect(m_menuPage, &MenuPage::placementRequested, this, &MainWindow::startPlacement);
     connect(m_menuPage, &MenuPage::rulesRequested, this, &MainWindow::startRules);
-    connect(m_menuPage, &MenuPage::quitRequested, this, &MainWindow::close);
 
     connect(m_placement, &PlacementView::backRequested, this, &MainWindow::showMenu);
     connect(m_placement, &PlacementView::placementFinished, this, &MainWindow::showMenu);

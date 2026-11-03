@@ -33,6 +33,8 @@ target_link_libraries(battleship_core PUBLIC Qt5::Core)
 add_library(battleship_ui STATIC
     src/ui/Theme.h
     src/ui/Theme.cpp
+    src/ui/GameControls.h
+    src/ui/GameControls.cpp
     src/ui/Pixmaps.h
     src/ui/Pixmaps.cpp
     src/ui/CellButton.h

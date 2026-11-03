@@ -8,14 +8,16 @@
 
 #include <array>
 
+class QButtonGroup;
+class QComboBox;
 class QLabel;
 class QLineEdit;
-class QPushButton;
 
 namespace bs {
 namespace ui {
 
 class BoardWidget;
+class ThemeButton;
 
 /// 布置界面（替代旧版 Configuration）。
 /// 只管输入与展示，"能不能放 / 撞没撞 / 剩几艘"全部问 Board。
@@ -36,11 +38,12 @@ signals:
 private:
     struct ShipRow {
         ShipType type = ShipType::Submarine;
+        ThemeButton* select = nullptr;
         QLabel* remaining = nullptr;
         QLineEdit* x = nullptr;
         QLineEdit* y = nullptr;
-        QLineEdit* direction = nullptr;
-        QPushButton* place = nullptr;
+        QComboBox* direction = nullptr;
+        ThemeButton* place = nullptr;
     };
 
     QWidget* buildPanel();
@@ -49,6 +52,8 @@ private:
 
     void refreshBoard();
     void refreshCounters();
+    void setActiveRow(int rowIndex);
+    void onBoardClicked(Coord coord);
     void placeShip(const ShipRow& row);
     void deleteShip();
     void commit();
@@ -62,9 +67,14 @@ private:
 
     QLabel* m_title = nullptr;
     BoardWidget* m_board = nullptr;
+    QButtonGroup* m_group = nullptr;
     std::array<ShipRow, kShipTypeCount> m_rows;
     QLineEdit* m_deleteX = nullptr;
     QLineEdit* m_deleteY = nullptr;
+
+    int m_activeRow = 0;
+    Coord m_pending;
+    bool m_hasPending = false;
 };
 
 } // namespace ui

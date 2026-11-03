@@ -1,8 +1,12 @@
 #include "ui/CellButton.h"
 
 #include "ui/Pixmaps.h"
+#include "ui/Theme.h"
 
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPen>
+#include <QResizeEvent>
 
 namespace bs {
 namespace ui {
@@ -11,10 +15,13 @@ CellButton::CellButton(Coord coord, QWidget* parent)
     : QPushButton(parent)
     , m_coord(coord)
 {
-    setFixedSize(kCellSizePx, kCellSizePx);
-    setIconSize(QSize(kCellSizePx, kCellSizePx));
+    // 不再固定 40px：尺寸完全由 BoardWidget 的网格布局按可用空间分配，
+    // 贴图在 paintEvent 里按当前 size() 缩放铺满，窗口缩放时棋盘跟着变。
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    setMinimumSize(1, 1);
     setFocusPolicy(Qt::NoFocus);
-    setFlat(false);
+    setFlat(true);
+    setAttribute(Qt::WA_Hover, true);
     applyIcon();
 }
 
@@ -78,7 +85,41 @@ void CellButton::applyIcon()
         }
     }
 
-    setIcon(*pixmap);
+    m_pixmap = pixmap;
+    updateScaledPixmap();
+    update();
+}
+
+void CellButton::updateScaledPixmap()
+{
+    if (width() <= 0 || height() <= 0 || !m_pixmap || m_pixmap->isNull()) {
+        m_scaled = QPixmap();
+        return;
+    }
+    if (m_pixmap->size() == size()) {
+        m_scaled = *m_pixmap;
+        return;
+    }
+    m_scaled = m_pixmap->scaled(size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+}
+
+void CellButton::resizeEvent(QResizeEvent* event)
+{
+    QPushButton::resizeEvent(event);
+    updateScaledPixmap();
+}
+
+void CellButton::paintEvent(QPaintEvent*)
+{
+    QPainter painter(this);
+    if (!m_scaled.isNull()) {
+        painter.drawPixmap(rect(), m_scaled);
+    } else {
+        painter.fillRect(rect(), theme::paper());
+    }
+    // 发丝边框把网格勾出来；贴图像素紧密拼接，线太粗会显脏。
+    painter.setPen(QPen(theme::hairline(), 1));
+    painter.drawRect(rect().adjusted(0, 0, -1, -1));
 }
 
 void CellButton::enterEvent(QEvent* event)

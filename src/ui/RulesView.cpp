@@ -126,7 +126,7 @@ QLabel* makeParagraph(const QString& text, int pixelSize, QWidget* parent = null
     auto* label = new QLabel(parent);
     label->setTextFormat(Qt::RichText);
     label->setText(
-        QStringLiteral("<div style=\"line-height:185%\">%1</div>").arg(text.toHtmlEscaped()));
+        QStringLiteral("<div style=\"line-height:125%\">%1</div>").arg(text.toHtmlEscaped()));
     label->setWordWrap(true);
     label->setFont(theme::bodyFont(pixelSize));
     label->setStyleSheet(QStringLiteral("color:%1;").arg(theme::inkSoft().name()));
@@ -161,7 +161,7 @@ QWidget* makeBullet(const QString& text, QWidget* parent = nullptr)
     layout->setSpacing(8);
 
     layout->addWidget(new BulletDot(row), 0, Qt::AlignTop);
-    layout->addWidget(makeParagraph(text, 16, row), 1);
+    layout->addWidget(makeParagraph(text, 24, row), 1);
     return row;
 }
 
@@ -176,7 +176,7 @@ QWidget* makeFigure(const QString& path, const QString& caption, QWidget* parent
 
     if (!caption.isEmpty()) {
         auto* label = new QLabel(caption, block);
-        label->setFont(theme::bodyFont(12));
+        label->setFont(theme::bodyFont(16));
         label->setStyleSheet(QStringLiteral("color:%1;").arg(theme::muted().name()));
         label->setWordWrap(true);
         layout->addWidget(label);
@@ -222,19 +222,19 @@ QWidget* makeFleetTable(QWidget* parent = nullptr)
         layout->addWidget(new IconTile(pixmaps::shipIcon(type), 34, row));
 
         auto* name = new QLabel(shipTypeName(type), row);
-        name->setFont(theme::titleFont(16));
+        name->setFont(theme::titleFont(24));
         name->setStyleSheet(QStringLiteral("color:%1;").arg(theme::ink().name()));
         layout->addWidget(name, 1);
 
         auto* length = new QLabel(QStringLiteral("%1 格").arg(lengthOf(type)), row);
-        length->setFont(theme::monoFont(14));
+        length->setFont(theme::monoFont(18));
         length->setStyleSheet(QStringLiteral("color:%1;").arg(theme::inkSoft().name()));
         length->setFixedWidth(70);
         length->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         layout->addWidget(length);
 
         auto* count = new QLabel(QStringLiteral("× %1").arg(rules::initialCount(type)), row);
-        count->setFont(theme::monoFont(14));
+        count->setFont(theme::monoFont(18));
         count->setStyleSheet(QStringLiteral("color:%1;").arg(theme::ink().name()));
         count->setFixedWidth(56);
         count->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -258,12 +258,12 @@ QWidget* makeLegendItem(const QPixmap& pixmap, const QString& title, const QStri
     layout->addWidget(new IconTile(pixmap, 58, item), 0, Qt::AlignLeft);
 
     auto* label = new QLabel(title, item);
-    label->setFont(theme::titleFont(14));
+    label->setFont(theme::titleFont(18));
     label->setStyleSheet(QStringLiteral("color:%1;").arg(theme::ink().name()));
     layout->addWidget(label);
 
     auto* sub = new QLabel(hint, item);
-    sub->setFont(theme::bodyFont(12));
+    sub->setFont(theme::bodyFont(16));
     sub->setStyleSheet(QStringLiteral("color:%1;").arg(theme::muted().name()));
     sub->setWordWrap(true);
     layout->addWidget(sub);
@@ -297,7 +297,7 @@ QWidget* makeTip(const QString& text, QWidget* parent = nullptr)
 
     auto* layout = new QVBoxLayout(box);
     layout->setContentsMargins(16, 12, 16, 12);
-    layout->addWidget(makeParagraph(text, 15, box));
+    layout->addWidget(makeParagraph(text, 23, box));
     return box;
 }
 
@@ -324,7 +324,7 @@ Section makeSection(const QString& number, const QString& title, const QString& 
 
     // 大号浅灰编号，是本页唯一的装饰元素
     auto* numeral = new QLabel(number, section.root);
-    numeral->setFont(theme::titleFont(30));
+    numeral->setFont(theme::titleFont(46));
     numeral->setStyleSheet(QStringLiteral("color:%1;").arg(theme::paperDeep().name()));
     head->addWidget(numeral, 0, Qt::AlignTop);
 
@@ -332,7 +332,7 @@ Section makeSection(const QString& number, const QString& title, const QString& 
     heading->setSpacing(2);
 
     auto* titleLabel = new QLabel(title, section.root);
-    titleLabel->setFont(theme::titleFont(22));
+    titleLabel->setFont(theme::titleFont(30));
     titleLabel->setStyleSheet(QStringLiteral("color:%1;").arg(theme::ink().name()));
     heading->addWidget(titleLabel);
     heading->addWidget(capsLabel(caps, section.root));
@@ -434,7 +434,7 @@ QWidget* RulesView::buildContent()
     layout->addSpacing(12);
 
     auto* title = new QLabel(QStringLiteral("玩法说明"), column);
-    title->setFont(theme::displayFont(34));
+    title->setFont(theme::displayFont(48));
     title->setStyleSheet(QStringLiteral("color:%1;").arg(theme::ink().name()));
     layout->addWidget(title);
 
@@ -442,7 +442,7 @@ QWidget* RulesView::buildContent()
     layout->addWidget(makeParagraph(
         QStringLiteral("10 × 10 的海域，9 艘舰，两位玩家共用一台设备轮流开火。"
                        "谁先把对方的舰全部击沉，谁就获胜。"),
-        17, column));
+        18, column));
     layout->addSpacing(20);
     layout->addWidget(makeFigure(QStringLiteral(":/Image/RuleInstruction2.png"),
                                  QStringLiteral("「全軍覆沒的人就算贏」—— 漫画原作的规则页"), column));
@@ -469,7 +469,7 @@ QWidget* RulesView::buildContent()
         Section section = makeSection(QStringLiteral("02"), QStringLiteral("舰队编制"),
                                       QStringLiteral("FLEET"), column);
         section.body->addWidget(makeParagraph(
-            QStringLiteral("四种舰占的格数不同：一艘舰的每一格都被揭开，才算击沉。"), 16, column));
+            QStringLiteral("四种舰占的格数不同：一艘舰的每一格都被揭开，才算击沉。"), 24, column));
         section.body->addWidget(makeFleetTable(column));
         section.body->addWidget(makeFigure(QStringLiteral(":/Image/RuleInstruction1.png"),
                                            QStringLiteral("从潜水舰到战舰，长度越长越难藏"), column));
@@ -481,7 +481,7 @@ QWidget* RulesView::buildContent()
         Section section = makeSection(QStringLiteral("03"), QStringLiteral("布置海域"),
                                       QStringLiteral("DEPLOYMENT"), column);
         section.body->addWidget(makeParagraph(
-            QStringLiteral("在主菜单选 Player1 或 Player2，进入自己的海域布置。"), 16, column));
+            QStringLiteral("在主菜单选 Player1 或 Player2，进入自己的海域布置。"), 24, column));
         section.body->addWidget(makeBullet(
             QStringLiteral("填「行」「列」与「方向」，点「放置」。方向填 x 向上、z 向右、"
                            "y 向左，留空则向下。"),
@@ -501,7 +501,7 @@ QWidget* RulesView::buildContent()
         Section section = makeSection(QStringLiteral("04"), QStringLiteral("轮流进攻"),
                                       QStringLiteral("TRADING FIRE"), column);
         section.body->addWidget(makeParagraph(
-            QStringLiteral("轮到你就点对方海域的一格开炮，只有两种结果："), 16, column));
+            QStringLiteral("轮到你就点对方海域的一格开炮，只有两种结果："), 24, column));
         section.body->addWidget(makeBullet(QStringLiteral("命中：该格揭开，你继续进攻。"), column));
         section.body->addWidget(makeBullet(QStringLiteral("落空：换对方进攻。"), column));
         section.body->addWidget(makeBullet(
@@ -519,7 +519,7 @@ QWidget* RulesView::buildContent()
         Section section = makeSection(QStringLiteral("05"), QStringLiteral("一同扫射"),
                                       QStringLiteral("VOLLEY"), column);
         section.body->addWidget(makeParagraph(
-            QStringLiteral("一次扫射覆盖 5 格，可以攒起来一次用完。"), 16, column));
+            QStringLiteral("一次扫射覆盖 5 格，可以攒起来一次用完。"), 24, column));
         section.body->addWidget(makeBullet(
             QStringLiteral("在输入框填「次数」（每 1 次 = 5 格），点「瞄准」。"), column));
         section.body->addWidget(makeBullet(

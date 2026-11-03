@@ -21,6 +21,7 @@ SOURCES += \
     src/ui/PlacementView.cpp \
     src/ui/BattleView.cpp \
     src/ui/Theme.cpp \
+    src/ui/GameControls.cpp \
     src/ui/MenuButton.cpp \
     src/ui/MenuPage.cpp \
     src/ui/RulesView.cpp \
@@ -39,6 +40,7 @@ HEADERS += \
     src/ui/PlacementView.h \
     src/ui/BattleView.h \
     src/ui/Theme.h \
+    src/ui/GameControls.h \
     src/ui/MenuButton.h \
     src/ui/MenuPage.h \
     src/ui/RulesView.h \

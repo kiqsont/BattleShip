@@ -6,19 +6,16 @@
 #include <QWidget>
 
 class QBoxLayout;
-class QVBoxLayout;
+class MenuButton;
 
 namespace bs {
 namespace ui {
 
-class MenuButton;
-class MenuPanel;
-
-/// 主菜单：漫画封面 + 深色操作面板。
+/// 主菜单：漫画封面作背景，4 个悬浮按钮直接叠在画面上。
 ///
-/// 窄窗口（< 760px）竖排：封面在上、面板压在底部；
-/// 宽窗口改成左右分栏：封面铺满左侧，面板占右侧，避免封面被放大到只剩天空。
-/// 悬停整行反白，是常见的游戏主菜单做法，也和黑白漫画素材同一个调子。
+/// 窄窗口（< 760px）竖排：按钮压在底部的暗场，不挡住封面标题；
+/// 宽窗口左右分栏：封面铺满左侧，按钮落在右侧暗场，避免封面被放大到只剩天空。
+/// 背景绘制逻辑与原版保持一致（"背景图不变"）。
 class MenuPage : public QWidget
 {
     Q_OBJECT
@@ -30,38 +27,17 @@ signals:
     void startRequested();
     void placementRequested(bs::Side side);
     void rulesRequested();
-    void quitRequested();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 private:
-    void buildPanel();
+    void buildButtons();
 
     QBoxLayout* m_layout = nullptr;
-    MenuPanel* m_panel = nullptr;
+    QWidget* m_buttons = nullptr;
     bool m_horizontal = false;
-};
-
-/// 底部/右侧操作面板：标题区 + 条目列表。背景与分隔线自行绘制。
-class MenuPanel : public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit MenuPanel(QWidget* parent = nullptr);
-
-    MenuButton* addEntry(const QString& text);
-
-protected:
-    void paintEvent(QPaintEvent* event) override;
-    void resizeEvent(QResizeEvent* event) override;
-
-private:
-    QVBoxLayout* m_layout = nullptr;
-    QVBoxLayout* m_entries = nullptr;
-    int m_count = 0;
 };
 
 } // namespace ui

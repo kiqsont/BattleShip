@@ -3,6 +3,7 @@
 
 #include "core/Types.h"
 
+#include <QPixmap>
 #include <QPushButton>
 
 namespace bs {
@@ -45,16 +46,21 @@ signals:
     void activated(bs::Coord coord);
 
 protected:
+    void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     void enterEvent(QEvent* event) override;
     void leaveEvent(QEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
 
 private:
     void applyIcon();
+    void updateScaledPixmap();
     bool canHover() const;
 
     Coord m_coord;
     CellVisual m_visual;
+    const QPixmap* m_pixmap = nullptr;
+    QPixmap m_scaled;
     bool m_interactive = false;
     bool m_hovered = false;
 };

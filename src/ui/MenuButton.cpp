@@ -9,13 +9,12 @@ namespace bs {
 namespace ui {
 namespace {
 
-constexpr int kRowHeight = 52;
+constexpr int kRowHeight = 50; ///< 按钮高度，圆角即半高，形成胶囊
 
 } // namespace
 
-MenuButton::MenuButton(int index, const QString& text, QWidget* parent)
+MenuButton::MenuButton(const QString& text, QWidget* parent)
     : QPushButton(text, parent)
-    , m_index(index)
 {
     setFlat(true);
     setCursor(Qt::PointingHandCursor);
@@ -30,41 +29,32 @@ void MenuButton::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    const bool active = isEnabled() && (underMouse() || hasFocus() || isDown());
-    const QRect row = rect().adjusted(0, 0, 0, -1);
+    const bool hovered = underMouse() || isDown();
+    const bool focused = hasFocus() && !isDown();
 
-    // 深色面板上，悬停整行反白；未选中时只留一条极淡的分隔线
-    const QColor bright = theme::paper();
-    if (active)
-        painter.fillRect(row, bright);
+    const qreal r = height() / 2.0;
+    const QRectF pill(rect());
 
-    const QColor foreground = active ? theme::ink() : bright;
-    const QColor numberColor = active ? QColor(22, 19, 15, 150) : QColor(250, 248, 242, 118);
+    // 背景：常态半透明墨色，悬停/按下转朱红实色；叠在漫画上既清晰又不刺眼。
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(hovered ? QBrush(theme::sealRed()) : QBrush(QColor(20, 17, 15, 110)));
+    painter.drawRoundedRect(pill, r, r);
 
-    painter.setFont(theme::monoFont(11));
-    painter.setPen(numberColor);
-    painter.drawText(QRect(row.left(), row.top(), 26, row.height()),
-                     Qt::AlignLeft | Qt::AlignVCenter,
-                     QString::number(m_index + 1).rightJustified(2, QLatin1Char('0')));
+    // 极细描边，给常态一个轻边界，不显笨重。
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(QColor(250, 248, 242, hovered ? 0 : 40), 1));
+    painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), r, r);
 
-    // 深底白字额外补一道细描边，小字号才不会发虚
-    theme::drawHeavyText(painter,
-                         QRect(row.left() + 38, row.top(), row.width() - 38 - 38, row.height()),
-                         text(), theme::titleFont(17), foreground, 0.5);
+    // 文字：居中、字重略加；中文小字号补一道细描边才"实"。
+    const QColor foreground = hovered ? theme::paper() : QColor(248, 246, 240, 238);
+    theme::drawHeavyText(painter, rect(), text(), theme::bodyFont(18, QFont::Medium),
+                         foreground, 0.5, Qt::AlignCenter);
 
-    if (isEnabled()) {
-        const int tipX = row.right() - (active ? 16 : 20);
-        const int tipY = row.center().y();
-        painter.setPen(QPen(foreground, 1.5));
-        painter.drawLine(tipX - 12, tipY, tipX, tipY);
-        painter.drawLine(tipX - 5, tipY - 4, tipX, tipY);
-        painter.drawLine(tipX - 5, tipY + 4, tipX, tipY);
-    }
-
-    if (!active) {
-        painter.setRenderHint(QPainter::Antialiasing, false);
-        painter.setPen(QPen(QColor(250, 248, 242, 34), 1));
-        painter.drawLine(row.left(), row.bottom() + 1, row.right(), row.bottom() + 1);
+    // 键盘聚焦时给一圈朱红描边（不依赖悬停）。
+    if (focused) {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(theme::sealRed(), 2));
+        painter.drawRoundedRect(pill.adjusted(1, 1, -1, -1), r, r);
     }
 }
 

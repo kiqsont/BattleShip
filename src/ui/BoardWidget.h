@@ -20,8 +20,16 @@ class BoardWidget : public QWidget
 public:
     explicit BoardWidget(QWidget* parent = nullptr);
 
-    /// 是否显示 1..10 的行列编号（布置界面需要，对战界面不需要）。
+    /// 是否显示 1..10 的行列编号（布置界面两块都要）。
     void setGridLabelsVisible(bool visible);
+
+    /// 单独控制顶部 1..10 列号：对战页第二块棋盘用它去掉夹在两盘之间的标尺行，
+    /// 保留左侧行号用于瞄准。
+    void setColumnLabelsVisible(bool visible);
+
+    /// 可伸缩模式：去掉所有坐标数字、格子交给网格布局按可用空间均分，
+    /// 棋盘随父布局尺寸变化；默认 false（布置页保持固定尺寸）。
+    void setScalable(bool scalable);
 
     void setCell(int row, int col, const CellVisual& visual, bool interactive);
     void clearCells();
@@ -30,9 +38,13 @@ signals:
     void cellActivated(bs::Coord coord);
 
 private:
+    void updateFixedSize();
+
     CellButton* m_cells[kBoardSize][kBoardSize];
     QLabel* m_headerLabels[2 * kBoardSize];
-    bool m_labelsVisible = false;
+    bool m_rowLabelsVisible = false;
+    bool m_columnLabelsVisible = false;
+    bool m_scalable = false;
 };
 
 } // namespace ui
