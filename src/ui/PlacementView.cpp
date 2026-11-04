@@ -2,65 +2,27 @@
 
 #include "ui/BoardWidget.h"
 #include "ui/GameControls.h"
+#include "ui/Pixmaps.h"
+#include "ui/ShipPalette.h"
 #include "ui/Theme.h"
 
-#include <QButtonGroup>
-#include <QComboBox>
+#include <QDrag>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
 #include <QMessageBox>
 #include <QPalette>
 #include <QVBoxLayout>
 
 namespace bs {
 namespace ui {
-namespace {
-
-QLineEdit* makeNumberEdit(QWidget* parent)
-{
-    auto* edit = new QLineEdit(parent);
-    edit->setFixedWidth(40);
-    edit->setAlignment(Qt::AlignCenter);
-    edit->setMaxLength(2);
-    styleLineEdit(edit);
-    return edit;
-}
-
-QLabel* makeFixedLabel(const QString& text, int width, QWidget* parent, int pixelSize = 13,
-                       bool strong = false)
-{
-    auto* label = new QLabel(text, parent);
-    label->setFixedWidth(width);
-    styleLabel(label, pixelSize, strong);
-    return label;
-}
-
-/// 方向下拉：用中文 + 箭头替代旧版 x / z / y 字母 token。
-void fillDirectionCombo(QComboBox* combo)
-{
-    combo->addItem(QStringLiteral("↓ 下"), static_cast<int>(Direction::Down));
-    combo->addItem(QStringLiteral("↑ 上"), static_cast<int>(Direction::Up));
-    combo->addItem(QStringLiteral("← 左"), static_cast<int>(Direction::Left));
-    combo->addItem(QStringLiteral("→ 右"), static_cast<int>(Direction::Right));
-    combo->setCurrentIndex(0); // 与旧版"留空=下"一致
-    combo->setToolTip(QStringLiteral("船头朝向：船体从起始格沿该方向延伸"));
-}
-
-Direction chosenDirection(const QComboBox* combo)
-{
-    return static_cast<Direction>(combo->currentData().toInt());
-}
-
-} // namespace
 
 PlacementView::PlacementView(GameSession* session, QWidget* parent)
     : QWidget(parent)
     , m_session(session)
 {
-    auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 8, 12, 8);
-    layout->setSpacing(8);
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(12, 8, 12, 8);
+    root->setSpacing(8);
 
     m_title = new QLabel(this);
     m_title->setAlignment(Qt::AlignCenter);
@@ -70,301 +32,219 @@ PlacementView::PlacementView(GameSession* session, QWidget* parent)
     m_title->setPalette(titlePalette);
 
     auto* hint = new QLabel(
-        QStringLiteral("① 选舰种　② 点棋盘选船头　③ 选方向　④ 点放置"), this);
+        QStringLiteral("① 侧栏选方向　② 把舰拖到海域　③ 拖动可换位置　④ 拖回侧栏即收回"), this);
     hint->setAlignment(Qt::AlignCenter);
+    hint->setWordWrap(true);
     styleLabel(hint, 13);
-
-    m_group = new QButtonGroup(this);
-    m_group->setExclusive(true);
 
     m_board = new BoardWidget(this);
     m_board->setGridLabelsVisible(true);
-    connect(m_board, &BoardWidget::cellActivated, this, &PlacementView::onBoardClicked);
+    m_board->setDropTargetEnabled(true);
 
-    layout->addStretch(1);
-    layout->addWidget(m_title, 0, Qt::AlignHCenter);
-    layout->addWidget(hint, 0, Qt::AlignHCenter);
-    layout->addWidget(m_board, 0, Qt::AlignHCenter);
-    layout->addSpacing(4);
-    layout->addWidget(buildPanel());
-    layout->addStretch(1);
+    m_palette = new ShipPalette(this);
 
-    connect(m_group, QOverload<int>::of(&QButtonGroup::buttonClicked), this,
-            &PlacementView::setActiveRow);
-
-    m_rows[0].select->setChecked(true);
-    setActiveRow(0);
-    setSide(Side::Player1);
-}
-
-QWidget* PlacementView::buildPanel()
-{
-    auto* panel = new QWidget(this);
-    auto* layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(5);
-
-    for (int i = 0; i < kShipTypeCount; ++i)
-        layout->addWidget(buildShipRow(i, kAllShipTypes[static_cast<size_t>(i)]));
-
-    layout->addWidget(buildDeleteRow());
-    layout->addSpacing(6);
+    auto* body = new QHBoxLayout;
+    body->setContentsMargins(0, 0, 0, 0);
+    body->setSpacing(10);
+    body->addWidget(m_board, 0, Qt::AlignTop);
+    body->addWidget(m_palette, 0, Qt::AlignTop);
 
     auto* buttons = new QHBoxLayout;
+    buttons->setContentsMargins(0, 0, 0, 0);
+    buttons->setSpacing(8);
     buttons->addStretch(1);
 
-    auto* save = new ThemeButton(QStringLiteral("保存"), panel, ThemeButton::Accent::Seal);
+    auto* save = new ThemeButton(QStringLiteral("保存"), this, ThemeButton::Accent::Seal);
     save->setFixedWidth(96);
     buttons->addWidget(save);
 
-    auto* back = new ThemeButton(QStringLiteral("返回"), panel);
+    auto* back = new ThemeButton(QStringLiteral("返回"), this);
     back->setFixedWidth(96);
     buttons->addWidget(back);
 
-    layout->addLayout(buttons);
+    // 整块内容（标题→提示→棋盘+侧栏→按钮）垂直居中：窗口拉高时上下留白，
+    // 而不是把棋盘与侧栏拉长。
+    root->addStretch(1);
+    root->addWidget(m_title);
+    root->addWidget(hint);
+    root->addLayout(body);
+    root->addLayout(buttons);
+    root->addStretch(1);
 
+    connect(m_board, &BoardWidget::hullHovered, this, &PlacementView::onHullHovered);
+    connect(m_board, &BoardWidget::hullDropped, this, &PlacementView::onHullDropped);
+    connect(m_board, &BoardWidget::hullDragLeft, this, &PlacementView::onHullDragLeft);
+    connect(m_board, &BoardWidget::hullDragRequested, this, &PlacementView::onBoardDragRequested);
+    connect(m_palette, &ShipPalette::hullReturned, this, &PlacementView::returnHull);
     connect(save, &ThemeButton::clicked, this, &PlacementView::commit);
     connect(back, &ThemeButton::clicked, this, &PlacementView::backRequested);
 
-    return panel;
-}
-
-QWidget* PlacementView::buildShipRow(int rowIndex, ShipType type)
-{
-    auto* rowWidget = new QWidget(this);
-    auto* layout = new QHBoxLayout(rowWidget);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(6);
-
-    ShipRow& row = m_rows[static_cast<size_t>(rowIndex)];
-    row.type = type;
-
-    row.select = new ThemeButton(shipTypeName(type), rowWidget);
-    row.select->setFixedWidth(76);
-    row.select->setCheckable(true);
-    row.select->setToolTip(QStringLiteral("选中后，点击棋盘即可把船头坐标填入本行"));
-    m_group->addButton(row.select, rowIndex);
-    layout->addWidget(row.select);
-
-    row.remaining = makeFixedLabel(QString(), 48, rowWidget);
-    layout->addWidget(row.remaining);
-
-    row.x = makeNumberEdit(rowWidget);
-    row.x->setPlaceholderText(QStringLiteral("行"));
-    row.x->setToolTip(QStringLiteral("起始行号，1-10；也可直接点击棋盘"));
-    layout->addWidget(row.x);
-
-    row.y = makeNumberEdit(rowWidget);
-    row.y->setPlaceholderText(QStringLiteral("列"));
-    row.y->setToolTip(QStringLiteral("起始列号，1-10；也可直接点击棋盘"));
-    layout->addWidget(row.y);
-
-    row.direction = new QComboBox(rowWidget);
-    row.direction->setFixedWidth(76);
-    fillDirectionCombo(row.direction);
-    styleComboBox(row.direction);
-    layout->addWidget(row.direction);
-
-    row.place = new ThemeButton(QStringLiteral("放置"), rowWidget);
-    row.place->setFixedWidth(60);
-    layout->addWidget(row.place);
-
-    layout->addStretch(1);
-
-    connect(row.place, &ThemeButton::clicked, this, [this, rowIndex] {
-        placeShip(m_rows[static_cast<size_t>(rowIndex)]);
-    });
-
-    return rowWidget;
-}
-
-QWidget* PlacementView::buildDeleteRow()
-{
-    auto* rowWidget = new QWidget(this);
-    auto* layout = new QHBoxLayout(rowWidget);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(6);
-
-    layout->addWidget(makeFixedLabel(QStringLiteral("删除船只"), 76, rowWidget, 13, true));
-    layout->addWidget(makeFixedLabel(QString(), 48, rowWidget));
-
-    m_deleteX = makeNumberEdit(rowWidget);
-    m_deleteX->setPlaceholderText(QStringLiteral("行"));
-    m_deleteX->setToolTip(QStringLiteral("要删除的船所在行号，1-10"));
-    layout->addWidget(m_deleteX);
-
-    m_deleteY = makeNumberEdit(rowWidget);
-    m_deleteY->setPlaceholderText(QStringLiteral("列"));
-    m_deleteY->setToolTip(QStringLiteral("要删除的船所在列号，1-10"));
-    layout->addWidget(m_deleteY);
-
-    // 占位，和上面的方向下拉对齐（用 QLabel 而不是禁用的输入框，避免多余的编辑框）。
-    layout->addWidget(makeFixedLabel(QString(), 76, rowWidget));
-
-    auto* button = new ThemeButton(QStringLiteral("删除"), rowWidget);
-    button->setFixedWidth(60);
-    layout->addWidget(button);
-
-    layout->addStretch(1);
-
-    connect(button, &ThemeButton::clicked, this, &PlacementView::deleteShip);
-    return rowWidget;
+    setSide(Side::Player1);
 }
 
 void PlacementView::setSide(Side side)
 {
     m_side = side;
-    m_hasPending = false;
     m_title->setText(sideTitle(m_side) + QStringLiteral("  布阵"));
+    m_palette->setSide(m_side);
     refreshBoard();
-    refreshCounters();
-}
-
-void PlacementView::setActiveRow(int rowIndex)
-{
-    m_activeRow = rowIndex;
-    m_hasPending = false;
-    for (int i = 0; i < kShipTypeCount; ++i) {
-        m_rows[static_cast<size_t>(i)].select->setAccent(
-            i == rowIndex ? ThemeButton::Accent::Seal : ThemeButton::Accent::Ink);
-    }
-    refreshBoard();
-}
-
-void PlacementView::onBoardClicked(Coord coord)
-{
-    m_pending = coord;
-    m_hasPending = true;
-
-    ShipRow& row = m_rows[static_cast<size_t>(m_activeRow)];
-    row.x->setText(QString::number(coord.row + 1));
-    row.y->setText(QString::number(coord.col + 1));
-    refreshBoard();
+    refreshPalette();
 }
 
 void PlacementView::refreshBoard()
 {
+    // 先撤掉可能残留的虚影，再按棋盘真实状态重画，避免预演覆盖被"固化"。
+    m_board->clearDropPreview();
+
     const Board& board = m_session->board(m_side);
     for (int row = 0; row < kBoardSize; ++row) {
         for (int col = 0; col < kBoardSize; ++col) {
-            const Coord coord(row, col);
-            const CellView view = board.view(coord);
+            const CellView view = board.view(Coord(row, col));
             CellVisual visual;
             if (view.occupied) {
                 visual.ship = view.type;
                 visual.direction = view.direction;
                 visual.kind = view.isHead ? CellVisual::Kind::ShipHead : CellVisual::Kind::ShipBody;
-            } else if (m_hasPending && coord == m_pending) {
-                visual.kind = CellVisual::Kind::Selected;
             }
-            // 布置阶段所有格子都可点：点击只是把坐标填进输入框。
-            m_board->setCell(row, col, visual, true);
+            // 布置阶段点击不做任何事；已放置的舰可以按住拖走。
+            m_board->setCell(row, col, visual, false, view.occupied);
         }
     }
 }
 
-void PlacementView::refreshCounters()
+void PlacementView::refreshPalette()
 {
     const Board& board = m_session->board(m_side);
-    for (ShipRow& row : m_rows) {
-        const int remaining = board.remainingToPlace(row.type);
-        row.remaining->setText(QStringLiteral("剩 %1").arg(remaining));
-        row.place->setEnabled(remaining > 0);
-        row.select->setEnabled(remaining > 0);
-    }
-
-    // 当前舰种放满了就自动跳到下一个还没放完的舰种。
-    if (!m_rows[static_cast<size_t>(m_activeRow)].select->isEnabled()) {
-        for (int i = 0; i < kShipTypeCount; ++i) {
-            if (m_rows[static_cast<size_t>(i)].select->isEnabled()) {
-                m_rows[static_cast<size_t>(i)].select->setChecked(true);
-                setActiveRow(i);
-                break;
-            }
-        }
-    }
+    for (ShipType type : kAllShipTypes)
+        m_palette->setRemaining(type, board.remainingToPlace(type));
 }
 
-Coord PlacementView::readCoord(QLineEdit* rowEdit, QLineEdit* colEdit, bool* ok) const
+int PlacementView::grabOffsetOf(const Ship& ship, Coord cell) const
 {
-    bool rowOk = false;
-    bool colOk = false;
-    const int row = rowEdit->text().toInt(&rowOk);
-    const int col = colEdit->text().toInt(&colOk);
-    *ok = rowOk && colOk;
-    return Coord(row - 1, col - 1);
-}
-
-void PlacementView::showPlacementError(PlacementError error, ShipType type)
-{
-    QString message;
-    switch (error) {
-    case PlacementError::OutOfBounds:
-        message = QStringLiteral("该位置不满足布置%1的要求").arg(shipTypeName(type));
-        break;
-    case PlacementError::Overlap:
-        message = QStringLiteral("与其它船只相撞");
-        break;
-    case PlacementError::NoShipAtCoord:
-        message = QStringLiteral("该位置没有可删除船只");
-        break;
-    case PlacementError::None:
-        return;
+    int offset = 0;
+    switch (ship.direction()) {
+    case Direction::Down:  offset = cell.row - ship.head().row; break;
+    case Direction::Up:    offset = ship.head().row - cell.row; break;
+    case Direction::Right: offset = cell.col - ship.head().col; break;
+    case Direction::Left:  offset = ship.head().col - cell.col; break;
     }
-    QMessageBox::critical(this, QStringLiteral("布置失败"), message);
+    return qBound(0, offset, ship.length() - 1);
 }
 
-void PlacementView::placeShip(const ShipRow& row)
+PlacementError PlacementView::checkDrop(const HullPayload& payload, Coord cell) const
 {
+    const Board& board = m_session->board(m_side);
+    const Coord head = hullHeadForDrop(payload, cell);
+
+    if (payload.fromBoard) {
+        // 拖动已放置的舰：校验时把它自己让开，否则挪一格就会跟自己相撞。
+        return board.canPlaceIgnoring(payload.type, head, payload.direction, payload.sourceHead);
+    }
+    if (board.remainingToPlace(payload.type) <= 0)
+        return PlacementError::Overlap; // 编制里这型舰已经放完了
+    return board.canPlace(payload.type, head, payload.direction);
+}
+
+bool PlacementView::dropHull(const HullPayload& payload, Coord cell)
+{
+    if (!cell.isValid())
+        return false;
+
     Board& board = m_session->board(m_side);
-    if (board.remainingToPlace(row.type) <= 0) {
-        QMessageBox::critical(this, QStringLiteral("布置失败"),
-                              QStringLiteral("没有多余的%1了").arg(shipTypeName(row.type)));
-        return;
+    const Coord head = hullHeadForDrop(payload, cell);
+
+    if (checkDrop(payload, cell) != PlacementError::None) {
+        // 落点不合法：棋盘保持原样，只把虚影撤掉。拖动途中已经用朱红提示过了，
+        // 这里不再弹窗打断。
+        refreshBoard();
+        return false;
     }
 
-    bool ok = false;
-    const Coord head = readCoord(row.x, row.y, &ok);
-    const Direction direction = chosenDirection(row.direction);
-    if (!ok) {
-        showPlacementError(PlacementError::OutOfBounds, row.type);
-        return;
+    if (payload.fromBoard) {
+        const Ship* source = board.shipAt(payload.sourceHead);
+        if (!source)
+            return false;
+        if (source->head() == head && source->direction() == payload.direction) {
+            refreshBoard(); // 原地松手
+            return true;
+        }
+        const ShipType type = source->type();
+        const Coord sourceHead = source->head();
+        const Direction sourceDirection = source->direction();
+        board.removeShipAt(payload.sourceHead);
+        if (!board.place(type, head, payload.direction)) {
+            // 上面的校验已经通过，理论上不会失败；真失败了也得把原舰放回去，不能凭空消失。
+            board.place(type, sourceHead, sourceDirection);
+            refreshBoard();
+            refreshPalette();
+            return false;
+        }
+    } else {
+        board.place(payload.type, head, payload.direction);
     }
-
-    const PlacementError error = board.canPlace(row.type, head, direction);
-    if (error != PlacementError::None) {
-        showPlacementError(error, row.type);
-        return;
-    }
-
-    board.place(row.type, head, direction);
-    row.x->clear();
-    row.y->clear();
-    m_hasPending = false;
 
     refreshBoard();
-    refreshCounters();
+    refreshPalette();
+    return true;
 }
 
-void PlacementView::deleteShip()
+bool PlacementView::returnHull(Coord cell)
 {
-    // 沿用旧版行为：两个框都填了才处理。
-    if (m_deleteX->text().isEmpty() || m_deleteY->text().isEmpty())
-        return;
+    if (!m_session->board(m_side).removeShipAt(cell))
+        return false;
+    refreshBoard();
+    refreshPalette();
+    return true;
+}
 
-    // 与放置框保持一致：X = 行，Y = 列。
-    bool ok = false;
-    const Coord coord = readCoord(m_deleteX, m_deleteY, &ok);
-    if (!ok || !m_session->board(m_side).removeShipAt(coord)) {
-        showPlacementError(PlacementError::NoShipAtCoord, ShipType::Submarine);
+void PlacementView::onHullHovered(Coord cell, const HullPayload& payload)
+{
+    if (!cell.isValid()) {
+        m_board->clearDropPreview();
         return;
     }
+    const Coord head = hullHeadForDrop(payload, cell);
+    const bool valid = checkDrop(payload, cell) == PlacementError::None;
+    m_board->showDropPreview(payload.type, head, payload.direction, valid);
+}
 
-    m_deleteX->clear();
-    m_deleteY->clear();
-    m_hasPending = false;
+void PlacementView::onHullDropped(Coord cell, const HullPayload& payload)
+{
+    dropHull(payload, cell);
+}
+
+void PlacementView::onHullDragLeft()
+{
+    // 虚影只是视觉覆盖，BoardWidget 已经还原；这里再按数据重画一次，
+    // 保证拖动取消 / 拖出棋盘后棋盘与模型完全一致。
     refreshBoard();
-    refreshCounters();
+}
+
+void PlacementView::onBoardDragRequested(Coord cell)
+{
+    const Board& board = m_session->board(m_side);
+    const Ship* ship = board.shipAt(cell);
+    if (!ship)
+        return;
+
+    HullPayload payload;
+    payload.type = ship->type();
+    payload.direction = ship->direction();
+    payload.fromBoard = true;
+    payload.sourceHead = ship->head();
+    payload.grabOffset = grabOffsetOf(*ship, cell);
+
+    // QDrag 由拖放系统接管并在结束时销毁。
+    auto* drag = new QDrag(m_board);
+    drag->setMimeData(makeHullMime(payload));
+    drag->setPixmap(renderHull(payload.type, payload.direction, kCellSizePx, 0.9));
+    drag->setHotSpot(hullHotSpot(payload.direction, lengthOf(payload.type), payload.grabOffset,
+                                 kCellSizePx));
+    drag->exec(Qt::MoveAction);
+
+    m_board->clearDropPreview();
+    refreshBoard();
+    refreshPalette();
 }
 
 void PlacementView::commit()

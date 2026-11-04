@@ -16,7 +16,9 @@ SOURCES += \
     src/core/GameSession.cpp \
     src/ui/Pixmaps.cpp \
     src/ui/CellButton.cpp \
+    src/ui/ShipDrag.cpp \
     src/ui/BoardWidget.cpp \
+    src/ui/ShipPalette.cpp \
     src/ui/TurnBar.cpp \
     src/ui/PlacementView.cpp \
     src/ui/BattleView.cpp \
@@ -35,7 +37,9 @@ HEADERS += \
     src/core/GameSession.h \
     src/ui/Pixmaps.h \
     src/ui/CellButton.h \
+    src/ui/ShipDrag.h \
     src/ui/BoardWidget.h \
+    src/ui/ShipPalette.h \
     src/ui/TurnBar.h \
     src/ui/PlacementView.h \
     src/ui/BattleView.h \

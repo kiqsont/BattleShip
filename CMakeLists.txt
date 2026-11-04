@@ -39,8 +39,12 @@ add_library(battleship_ui STATIC
     src/ui/Pixmaps.cpp
     src/ui/CellButton.h
     src/ui/CellButton.cpp
+    src/ui/ShipDrag.h
+    src/ui/ShipDrag.cpp
     src/ui/BoardWidget.h
     src/ui/BoardWidget.cpp
+    src/ui/ShipPalette.h
+    src/ui/ShipPalette.cpp
     src/ui/TurnBar.h
     src/ui/TurnBar.cpp
     src/ui/PlacementView.h

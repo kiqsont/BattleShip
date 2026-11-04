@@ -36,9 +36,9 @@ MainWindow::MainWindow(QWidget* parent)
     : QWidget(parent)
 {
     // 窗口可自由缩放：规则页按文档流重排，其余页面居中留白。
-    // 最小宽度取棋盘（400）+ 行列标号的宽度，再小布置页就会挤。
-    setMinimumSize(480, 620);
-    resize(480, 900);
+    // 最小尺寸取布置页"棋盘 + 舰队侧栏"的实际宽度，再小侧栏就会被挤扁。
+    setMinimumSize(620, 660);
+    resize(660, 900);
     setWindowTitle(QStringLiteral("Battle Ship"));
 
     m_stack = new QStackedWidget(this);
@@ -51,7 +51,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_battle = new BattleView(&m_session, this);
     m_rules = new RulesView(this);
 
-    m_placementPage = wrapCentered(m_placement, 520);
+    m_placementPage = wrapCentered(m_placement, 620);
     // 对战页固定竖排，铺满窗口宽度：两块 424px 棋盘需要完整宽度才不会出现水平滚动条。
     m_battlePage = m_battle;
 

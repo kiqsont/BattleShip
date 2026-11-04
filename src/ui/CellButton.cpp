@@ -3,6 +3,7 @@
 #include "ui/Pixmaps.h"
 #include "ui/Theme.h"
 
+#include <QApplication>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
@@ -10,6 +11,14 @@
 
 namespace bs {
 namespace ui {
+namespace {
+
+/// 虚影：半透明贴在格子上，合不合法只靠颜色区分（墨 = 可以放，朱红 = 放不下）。
+constexpr qreal kGhostOpacity = 0.55;
+constexpr int kGhostTintOk = 26;
+constexpr int kGhostTintBad = 78;
+
+} // namespace
 
 CellButton::CellButton(Coord coord, QWidget* parent)
     : QPushButton(parent)
@@ -28,7 +37,8 @@ CellButton::CellButton(Coord coord, QWidget* parent)
 void CellButton::setVisual(const CellVisual& visual)
 {
     if (m_visual.kind == visual.kind && m_visual.ship == visual.ship
-        && m_visual.direction == visual.direction && m_visual.sunk == visual.sunk) {
+        && m_visual.direction == visual.direction && m_visual.sunk == visual.sunk
+        && m_visual.valid == visual.valid) {
         return;
     }
     m_visual = visual;
@@ -40,11 +50,29 @@ void CellButton::setInteractive(bool interactive)
     if (m_interactive == interactive)
         return;
     m_interactive = interactive;
-    setCursor(interactive ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    updateCursor();
     if (!interactive && m_hovered) {
         m_hovered = false;
         applyIcon();
     }
+}
+
+void CellButton::setDragSource(bool draggable)
+{
+    if (m_dragSource == draggable)
+        return;
+    m_dragSource = draggable;
+    updateCursor();
+}
+
+void CellButton::updateCursor()
+{
+    if (m_interactive)
+        setCursor(Qt::PointingHandCursor);
+    else if (m_dragSource)
+        setCursor(Qt::OpenHandCursor);
+    else
+        setCursor(Qt::ArrowCursor);
 }
 
 bool CellButton::canHover() const
@@ -77,9 +105,11 @@ void CellButton::applyIcon()
             pixmap = m_visual.sunk ? &pixmaps::shipIcon(m_visual.ship) : &pixmaps::volleyCell();
             break;
         case CellVisual::Kind::ShipHead:
+        case CellVisual::Kind::GhostHead:
             pixmap = &pixmaps::shipHead(m_visual.direction);
             break;
         case CellVisual::Kind::ShipBody:
+        case CellVisual::Kind::GhostBody:
             pixmap = &pixmaps::shipBody();
             break;
         }
@@ -112,13 +142,26 @@ void CellButton::resizeEvent(QResizeEvent* event)
 void CellButton::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
+    const bool ghost = m_visual.isGhost();
+
     if (!m_scaled.isNull()) {
+        // 虚影用半透明画：底下的海水/已有舰船还能透出来，一眼能看出"这是预演"。
+        painter.setOpacity(ghost ? kGhostOpacity : 1.0);
         painter.drawPixmap(rect(), m_scaled);
+        painter.setOpacity(1.0);
     } else {
         painter.fillRect(rect(), theme::paper());
     }
+
+    if (ghost) {
+        QColor tint = m_visual.valid ? theme::ink() : theme::sealRed();
+        tint.setAlpha(m_visual.valid ? kGhostTintOk : kGhostTintBad);
+        painter.fillRect(rect(), tint);
+    }
+
     // 发丝边框把网格勾出来；贴图像素紧密拼接，线太粗会显脏。
-    painter.setPen(QPen(theme::hairline(), 1));
+    painter.setPen(QPen(m_visual.isGhost() && !m_visual.valid ? theme::sealRed() : theme::hairline(),
+                        m_visual.isGhost() && !m_visual.valid ? 2 : 1));
     painter.drawRect(rect().adjusted(0, 0, -1, -1));
 }
 
@@ -142,6 +185,16 @@ void CellButton::leaveEvent(QEvent* event)
 
 void CellButton::mousePressEvent(QMouseEvent* event)
 {
+    // 拖走整艘舰：即使这格不响应点击（布置阶段），也要能按住拖。
+    // 这里必须 accept 而不是 ignore —— 被 ignore 的按下会转交给父控件处理，
+    // 之后的移动事件就归父控件了，格子再也收不到 mouseMove，拖拽根本起不来。
+    if (m_dragSource && event->button() == Qt::LeftButton) {
+        m_dragArmed = true;
+        m_dragPressPos = event->pos();
+        event->accept();
+        return;
+    }
+
     if (!m_interactive) {
         event->ignore();
         return;
@@ -149,6 +202,23 @@ void CellButton::mousePressEvent(QMouseEvent* event)
     if (event->button() == Qt::LeftButton)
         emit activated(m_coord);
     event->accept();
+}
+
+void CellButton::mouseMoveEvent(QMouseEvent* event)
+{
+    if (m_dragArmed
+        && (event->pos() - m_dragPressPos).manhattanLength() >= QApplication::startDragDistance()) {
+        m_dragArmed = false;
+        emit dragRequested(m_coord);
+        return;
+    }
+    QPushButton::mouseMoveEvent(event);
+}
+
+void CellButton::mouseReleaseEvent(QMouseEvent* event)
+{
+    m_dragArmed = false;
+    QPushButton::mouseReleaseEvent(event);
 }
 
 } // namespace ui

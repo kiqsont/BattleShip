@@ -586,3 +586,53 @@ ctest --test-dir build          # tst_board 10 项 + tst_gamesession 8 项 + tst
 
 `tst_ui` 9 → 10 项，新增"窗口可缩放"（最小宽 < 900 且最大宽 > 900，resize 生效）。
 合计 30 项断言全绿；CMake 与 qmake 两条构建路径均零警告通过。
+
+---
+
+## 十一、第五轮：布置页改成拖放（2026-11-04）
+
+上一轮的布置页还是"填行、填列、选方向、点放置"的表单，一屏 10 个输入框 + 5 个按钮，
+既不像在摆舰队，也没法直观看到"这艘舰能不能塞进去"。这一轮把布置交互整体换成拖放。
+
+### 交互
+
+- 右侧新增舰队侧栏：一个方向按钮（点一下顺时针转 90°，上 → 右 → 下 → 左）＋ 四种舰的条目（舰体贴图 + 剩余数）＋ 底部虚线回收区。
+- 从侧栏按住舰体拖到海域，拖动过程中棋盘给出半透明虚影；虚影按能否落子着色（墨灰 / 朱红）。
+- 海域上已放置的舰可以按住拖走换位置；拖动时保持"抓住的那一格"贴在鼠标下，位置不跳。
+- 把海域上的舰拖回侧栏虚线框，整艘收回舰队。
+- 落点非法时松手静默取消（虚影已经红过，不再弹窗打断）。
+
+### 代码
+
+- `core/Board` 增加 `shipAt()` 与 `canPlaceIgnoring()`：拖动已放置的舰要"自己让开自己"，
+  这条校验留在 core，UI 不复制规则。
+- 新增 `ui/ShipDrag`：`HullPayload`（舰种 / 朝向 / 是否来自棋盘 / 原船头 / 抓取偏移）、
+  MIME 编解码、`renderHull()` 拖拽图、`hullHeadForDrop()` 落点换算。
+- 新增 `ui/ShipPalette`：`ShipPalette`（侧栏）、`ShipTile`（一行舰）、`HullReturnZone`（回收区）。
+- `CellButton` 增加 `GhostHead/GhostBody` 两种视觉（55% 不透明度 + 可放/不可放着色）与
+  "按住拖动"（`dragSource`）；`BoardWidget` 增加落点预演（备份被覆盖的视觉，清场时贴回）
+  与拖放接收（棋盘与格子都装事件过滤器，统一换算成棋盘坐标）。
+- `PlacementView` 重写：删掉 10 个输入框、5 个按钮与 `buildShipRow/buildDeleteRow/placeShip/deleteShip`，
+  收敛为 `dropHull()`（新建与挪动共用）与 `returnHull()`；合法性只看 `checkDrop()`。
+- `MainWindow` 最小尺寸 480×620 → 620×660（棋盘 424 + 侧栏 156 + 间距），默认 660×900。
+- 规则页第 03 节改成拖放说明，顺手把第 05 节遗留的「启动」改成「开火」。
+
+### 测试
+
+`tst_ui` 14 → 19 项：删掉 3 项输入框/点击填行的用例，新增
+侧栏满编、拖放落子、重叠落点被拒、悬停虚影、拖动挪舰（抓取偏移）、拖回侧栏、
+格子拖动请求、方向按钮轮换共 8 项。拖放用 `QDragEnterEvent` + `QDropEvent` 直接发给格子模拟，
+和真实拖拽走同一条代码路径。三套测试合计 35 个用例全绿（8 + 8 + 19）。
+
+### 踩到的坑
+
+- **被 ignore 的按下会把后续移动事件交给父控件**：格子若不 accept，`mouseMove` 就归
+  `BoardWidget`，`dragRequested` 永远发不出来。修法：`dragSource` 的格子先 accept 再返回。
+- **祖先控件的样式表会下发到所有子控件**：用 `setStyleSheet("background: ...")` 给容器刷底色，
+  会把侧栏的 1px 细线、悬停底色一起刷平。分隔线改用 `QPalette::Window` + `autoFillBackground`。
+- **offscreen 平台没有字体**：截图脚本在 `QT_QPA_PLATFORM=offscreen` 下所有文字都是方块，
+  目视检查布局必须跑真实平台。
+- **船头贴图与枚举语义相反**：`ShipHead.png` 原图朝上、`Down` 为 0°，即"船体沿 direction 延伸、
+  船头朝反方向"。侧栏若直接按枚举名标「上/下」，选「上」拖动却得到一艘朝下的船。
+  修法是文案层对调（`directionLabel/directionArrow`），不要改 `Pixmaps` 的旋转——
+  那会让船头指进船体里。

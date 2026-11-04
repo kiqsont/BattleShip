@@ -483,11 +483,12 @@ QWidget* RulesView::buildContent()
         section.body->addWidget(makeParagraph(
             QStringLiteral("在主菜单选 Player1 或 Player2，进入自己的海域布置。"), 24, column));
         section.body->addWidget(makeBullet(
-            QStringLiteral("填「行」「列」与「方向」，点「放置」。方向填 x 向上、z 向右、"
-                           "y 向左，留空则向下。"),
+            QStringLiteral("先在右侧舰队面板选好「方向」，再按住舰体拖到海域上；"
+                           "拖动时海域会给出半透明虚影，松手即落子。"),
             column));
         section.body->addWidget(makeBullet(
-            QStringLiteral("放错了，在删除栏填行、列后点「删除」，该舰会整艘取回。"), column));
+            QStringLiteral("放错了，直接在棋盘上按住那艘舰拖到别处即可换位置；"
+                           "拖回侧栏底部的虚线框，整艘取回舰队。"), column));
         section.body->addWidget(makeBullet(
             QStringLiteral("九艘全部放完点「保存」；两方都布好之后，回主菜单点「开始」。"), column));
         section.body->addWidget(makeFigure(QStringLiteral(":/Image/RuleInstruction3.png"),
@@ -523,7 +524,7 @@ QWidget* RulesView::buildContent()
         section.body->addWidget(makeBullet(
             QStringLiteral("在输入框填「次数」（每 1 次 = 5 格），点「瞄准」。"), column));
         section.body->addWidget(makeBullet(
-            QStringLiteral("依次点选 5 × 次数 个格子，点「启动」发射。"), column));
+            QStringLiteral("依次点选 5 × 次数 个格子，点「开火」发射。"), column));
         section.body->addWidget(makeBullet(
             QStringLiteral("扫射命中只显示爆点，不暴露舰型；只有击沉才显示船型。"), column));
         section.body->addWidget(makeFigure(QStringLiteral(":/Image/RuleInstruction5.png"),

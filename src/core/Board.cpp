@@ -30,12 +30,22 @@ int Board::shipIndexAt(Coord coord) const
 
 PlacementError Board::canPlace(ShipType type, Coord head, Direction direction) const
 {
+    return canPlaceIgnoring(type, head, direction, Coord(-1, -1));
+}
+
+PlacementError Board::canPlaceIgnoring(ShipType type, Coord head, Direction direction,
+                                       Coord ignoreShipAt) const
+{
+    // shipIndexAt 对无效坐标返回 -1，于是 canPlace 直接走同一条路径。
+    const int ignored = shipIndexAt(ignoreShipAt);
+
     const int len = lengthOf(type);
     for (int i = 0; i < len; ++i) {
         const Coord cell = step(head, direction, i);
         if (!cell.isValid())
             return PlacementError::OutOfBounds;
-        if (m_owner[static_cast<size_t>(cell.flatIndex())] >= 0)
+        const int owner = m_owner[static_cast<size_t>(cell.flatIndex())];
+        if (owner >= 0 && owner != ignored)
             return PlacementError::Overlap;
     }
     return PlacementError::None;
@@ -100,6 +110,14 @@ int Board::remainingToPlace(ShipType type) const
 bool Board::hasShipAt(Coord coord) const
 {
     return shipIndexAt(coord) >= 0;
+}
+
+const Ship* Board::shipAt(Coord coord) const
+{
+    const int index = shipIndexAt(coord);
+    if (index < 0)
+        return nullptr;
+    return &m_ships[static_cast<size_t>(index)];
 }
 
 bool Board::isResolved(Coord coord) const

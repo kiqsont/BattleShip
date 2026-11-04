@@ -1,15 +1,21 @@
 #include "core/GameSession.h"
+#include "core/Rules.h"
 #include "ui/BattleView.h"
 #include "ui/BoardWidget.h"
 #include "ui/CellButton.h"
 #include "ui/MainWindow.h"
 #include "ui/PlacementView.h"
 #include "ui/RulesView.h"
+#include "ui/ShipDrag.h"
+#include "ui/ShipPalette.h"
 #include "ui/TurnBar.h"
 
 #include <QApplication>
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
@@ -32,9 +38,14 @@ private slots:
     void mainWindowIsResizable();
     void menuNavigatesToRulesAndBack();
     void rulesPageScrollsThroughAllSections();
-    void placementWiresInputsToBoard();
-    void placementBoardClickFillsActiveRow();
-    void deleteUsesSameAxisAsPlacement();
+    void placementPaletteListsWholeFleet();
+    void placementDropPlacesShip();
+    void placementRejectsOverlappingDrop();
+    void placementHoverShowsGhostPreview();
+    void placementBoardDragMovesShip();
+    void placementDropOnPaletteReturnsShip();
+    void placementCellDragCanStart();
+    void placementDirectionButtonCycles();
     void battleCellClickReachesSession();
     void battleBoardsSeparatedByDivider();
     void battleBoardsScaleWithWindow();
@@ -65,11 +76,36 @@ ui::CellButton* cellAt(QWidget* board, Coord coord)
     return nullptr;
 }
 
+/// 取一格的视觉类型（转成 int 便于 QCOMPARE 打印）。
+int visualKind(QWidget* board, Coord coord)
+{
+    ui::CellButton* cell = cellAt(board, coord);
+    return cell ? static_cast<int>(cell->visual().kind) : -1;
+}
+
 void sendClick(QWidget* widget)
 {
     QMouseEvent event(QEvent::MouseButtonPress, QPointF(5, 5), Qt::LeftButton, Qt::LeftButton,
                       Qt::NoModifier);
     QApplication::sendEvent(widget, &event);
+}
+
+/// 在某一格上模拟"把一艘舰拖到这里松手"，走的是真实的拖放事件链：
+/// 事件发给格子本身（和真实拖拽一致），由 BoardWidget 的事件过滤器转成棋盘级处理。
+void sendHullDrop(QWidget* board, Coord coord, const ui::HullPayload& payload)
+{
+    ui::CellButton* cell = cellAt(board, coord);
+    if (!cell)
+        return;
+
+    const QScopedPointer<QMimeData> mime(ui::makeHullMime(payload));
+    const QPoint pos = cell->rect().center();
+
+    QDragEnterEvent enter(pos, Qt::CopyAction, mime.data(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(cell, &enter);
+
+    QDropEvent drop(QPointF(pos), Qt::CopyAction, mime.data(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(cell, &drop);
 }
 
 } // namespace
@@ -143,53 +179,23 @@ void UiTest::rulesPageScrollsThroughAllSections()
                                    QStringLiteral("04"), QStringLiteral("05"), QStringLiteral("06")}));
 }
 
-void UiTest::placementWiresInputsToBoard()
+void UiTest::placementPaletteListsWholeFleet()
 {
     GameSession session;
     ui::PlacementView view(&session);
     view.setSide(Side::Player1);
 
-    const auto edits = view.findChildren<QLineEdit*>();
-    QVERIFY(edits.size() >= 3);
-    // 第一行是战舰：填行、列，方向留空（默认 Down）
-    edits.at(0)->setText(QStringLiteral("1"));
-    edits.at(1)->setText(QStringLiteral("1"));
+    // 侧栏按编制表列出四种舰，初始剩余数加起来就是整支舰队
+    const auto tiles = view.findChildren<ui::ShipTile*>();
+    QCOMPARE(tiles.size(), kShipTypeCount);
 
-    QPushButton* place = firstByText<QPushButton>(&view, QStringLiteral("放置"));
-    QVERIFY(place != nullptr);
-    place->click();
-
-    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 1);
-    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(0, 0)));
-    QCOMPARE(session.board(Side::Player1).remainingToPlace(ShipType::Battleship), 0);
+    int remaining = 0;
+    for (ui::ShipTile* tile : tiles)
+        remaining += tile->remaining();
+    QCOMPARE(remaining, rules::totalShipCount());
 }
 
-void UiTest::deleteUsesSameAxisAsPlacement()
-{
-    GameSession session;
-    ui::PlacementView view(&session);
-    view.setSide(Side::Player1);
-
-    const auto edits = view.findChildren<QLineEdit*>();
-    // 4 行船只各 2 个输入框（方向改为下拉），之后是删除行的行/列
-    QCOMPARE(edits.size(), 10);
-
-    // 放置在(行1, 列2)
-    edits.at(0)->setText(QStringLiteral("1"));
-    edits.at(1)->setText(QStringLiteral("2"));
-    firstByText<QPushButton>(&view, QStringLiteral("放置"))->click();
-    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(0, 1)));
-
-    // 删除框用同样的 X=行 / Y=列
-    edits.at(8)->setText(QStringLiteral("1"));
-    edits.at(9)->setText(QStringLiteral("2"));
-    firstByText<QPushButton>(&view, QStringLiteral("删除"))->click();
-
-    QVERIFY(!session.board(Side::Player1).hasShipAt(Coord(0, 1)));
-    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 0);
-}
-
-void UiTest::placementBoardClickFillsActiveRow()
+void UiTest::placementDropPlacesShip()
 {
     GameSession session;
     ui::PlacementView view(&session);
@@ -197,15 +203,184 @@ void UiTest::placementBoardClickFillsActiveRow()
 
     auto* board = view.findChild<ui::BoardWidget*>();
     QVERIFY(board != nullptr);
-    ui::CellButton* cell = cellAt(board, Coord(4, 6));
+
+    ui::HullPayload payload;
+    payload.type = ShipType::Battleship;
+    payload.direction = Direction::Right;
+    sendHullDrop(board, Coord(0, 1), payload);
+
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 1);
+    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(0, 1)));
+    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(0, 4)));
+    QCOMPARE(session.board(Side::Player1).remainingToPlace(ShipType::Battleship), 0);
+
+    // 侧栏的剩余数要跟着变，否则玩家会以为还能再拖一艘
+    for (ui::ShipTile* tile : view.findChildren<ui::ShipTile*>()) {
+        if (tile->type() == ShipType::Battleship)
+            QCOMPARE(tile->remaining(), 0);
+    }
+}
+
+void UiTest::placementRejectsOverlappingDrop()
+{
+    GameSession session;
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player1);
+
+    auto* board = view.findChild<ui::BoardWidget*>();
+    QVERIFY(board != nullptr);
+
+    ui::HullPayload battleship;
+    battleship.type = ShipType::Battleship;
+    battleship.direction = Direction::Right;
+    sendHullDrop(board, Coord(0, 0), battleship);
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 1);
+
+    // 巡洋舰落在战舰身上：必须被拒绝，且不留下半截船体
+    ui::HullPayload cruiser;
+    cruiser.type = ShipType::Cruiser;
+    cruiser.direction = Direction::Down;
+    sendHullDrop(board, Coord(0, 2), cruiser);
+
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Cruiser), 0);
+    QVERIFY(!session.board(Side::Player1).hasShipAt(Coord(1, 2)));
+}
+
+void UiTest::placementHoverShowsGhostPreview()
+{
+    GameSession session;
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player1);
+
+    auto* board = view.findChild<ui::BoardWidget*>();
+    QVERIFY(board != nullptr);
+    ui::CellButton* cell = cellAt(board, Coord(2, 3));
     QVERIFY(cell != nullptr);
 
-    sendClick(cell);
+    const QScopedPointer<QMimeData> mime(
+        ui::makeHullMime({ShipType::Battleship, Direction::Right, false, Coord(), 0}));
+    QDragEnterEvent enter(cell->rect().center(), Qt::CopyAction, mime.data(), Qt::LeftButton,
+                          Qt::NoModifier);
+    QApplication::sendEvent(cell, &enter);
 
-    // 默认激活第一行（战舰）：点 (行5, 列7) 应自动填入 5 / 7
-    const auto edits = view.findChildren<QLineEdit*>();
-    QCOMPARE(edits.at(0)->text(), QStringLiteral("5"));
-    QCOMPARE(edits.at(1)->text(), QStringLiteral("7"));
+    // 拖过棋盘时给出虚影，但数据不能被预演污染
+    QCOMPARE(visualKind(board, Coord(2, 3)), static_cast<int>(ui::CellVisual::Kind::GhostHead));
+    QCOMPARE(visualKind(board, Coord(2, 6)), static_cast<int>(ui::CellVisual::Kind::GhostBody));
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 0);
+
+    QDragLeaveEvent leave;
+    QApplication::sendEvent(cell, &leave);
+    QCOMPARE(visualKind(board, Coord(2, 3)), static_cast<int>(ui::CellVisual::Kind::Empty));
+}
+
+void UiTest::placementBoardDragMovesShip()
+{
+    GameSession session;
+    session.board(Side::Player1).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
+
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player1);
+
+    auto* board = view.findChild<ui::BoardWidget*>();
+    QVERIFY(board != nullptr);
+
+    // 抓住船体第 2 格（0,1）拖到 (5,5)：船头应该落在 (5,4)，位置不能跳
+    ui::HullPayload payload;
+    payload.type = ShipType::Battleship;
+    payload.direction = Direction::Right;
+    payload.fromBoard = true;
+    payload.sourceHead = Coord(0, 0);
+    payload.grabOffset = 1;
+    sendHullDrop(board, Coord(5, 5), payload);
+
+    QVERIFY(!session.board(Side::Player1).hasShipAt(Coord(0, 0)));
+    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(5, 4)));
+    QVERIFY(session.board(Side::Player1).hasShipAt(Coord(5, 7)));
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 1);
+}
+
+void UiTest::placementDropOnPaletteReturnsShip()
+{
+    GameSession session;
+    session.board(Side::Player1).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
+
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player1);
+
+    auto* returnZone = view.findChild<ui::HullReturnZone*>();
+    QVERIFY(returnZone != nullptr);
+
+    const QScopedPointer<QMimeData> mime(
+        ui::makeHullMime({ShipType::Battleship, Direction::Right, true, Coord(0, 0), 0}));
+    const QPoint pos = returnZone->rect().center();
+
+    QDragEnterEvent enter(pos, Qt::MoveAction, mime.data(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(returnZone, &enter);
+    QDropEvent drop(QPointF(pos), Qt::MoveAction, mime.data(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(returnZone, &drop);
+
+    QVERIFY(!session.board(Side::Player1).hasShipAt(Coord(0, 0)));
+    QCOMPARE(session.board(Side::Player1).placedCount(ShipType::Battleship), 0);
+}
+
+void UiTest::placementCellDragCanStart()
+{
+    // 棋盘上已放置的舰要能"按住拖动"。这里只验证按下 + 移动会发出拖动请求，
+    // 不真的起 QDrag（它会进事件循环，测试里没法收敛）。
+    ui::BoardWidget board;
+    board.setGridLabelsVisible(false);
+    board.setDropTargetEnabled(true);
+
+    ui::CellVisual visual;
+    visual.kind = ui::CellVisual::Kind::ShipHead;
+    visual.ship = ShipType::Battleship;
+    visual.direction = Direction::Right;
+    board.setCell(0, 0, visual, false, true);
+
+    ui::CellButton* cell = cellAt(&board, Coord(0, 0));
+    QVERIFY(cell != nullptr);
+    QVERIFY(cell->isDragSource());
+
+    int requests = 0;
+    QObject::connect(&board, &ui::BoardWidget::hullDragRequested,
+                     [&requests](Coord) { ++requests; });
+
+    QMouseEvent press(QEvent::MouseButtonPress, QPointF(10, 10), Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(cell, &press);
+
+    QMouseEvent move(QEvent::MouseMove, QPointF(40, 40), Qt::LeftButton, Qt::LeftButton,
+                     Qt::NoModifier);
+    QApplication::sendEvent(cell, &move);
+
+    QCOMPARE(requests, 1);
+}
+
+void UiTest::placementDirectionButtonCycles()
+{
+    GameSession session;
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player1);
+
+    auto* palette = view.findChild<ui::ShipPalette*>();
+    QVERIFY(palette != nullptr);
+
+    // 只有一个方向按钮，初始显示「↑ 上」（文案按"看起来船头朝哪"标，不是枚举名）
+    QPushButton* rotate = firstByText<QPushButton>(palette, QStringLiteral("↑ 上"));
+    QVERIFY(rotate != nullptr);
+
+    // 点一下顺时针转一格：上 → 右 → 下 → 左 → 上
+    const QStringList expected{QStringLiteral("→ 右"), QStringLiteral("↓ 下"),
+                               QStringLiteral("← 左"), QStringLiteral("↑ 上")};
+    for (const QString& text : expected) {
+        rotate->click();
+        QCOMPARE(rotate->text(), text);
+        // 侧栏里的舰要跟着转，拖出去才是新朝向
+        for (ui::ShipTile* tile : palette->findChildren<ui::ShipTile*>()) {
+            QCOMPARE(static_cast<int>(tile->direction()),
+                     static_cast<int>(palette->direction()));
+        }
+    }
 }
 
 void UiTest::battleCellClickReachesSession()

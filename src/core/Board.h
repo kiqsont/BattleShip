@@ -32,10 +32,17 @@ public:
 
     // ---- 布置 ----
     PlacementError canPlace(ShipType type, Coord head, Direction direction) const;
+    /// 与 canPlace 相同的校验，但把"位于 ignoreShipAt 的那艘舰"当成已经让开。
+    /// 拖动一艘已放置的舰换位置时，它自己不能挡住自己。
+    PlacementError canPlaceIgnoring(ShipType type, Coord head, Direction direction,
+                                    Coord ignoreShipAt) const;
     bool place(ShipType type, Coord head, Direction direction);
     bool removeShipAt(Coord coord);
     int placedCount(ShipType type) const;
     int remainingToPlace(ShipType type) const;
+
+    /// 该格所属的舰；空格返回 nullptr。指针在下次增删舰船后失效，不要长期持有。
+    const Ship* shipAt(Coord coord) const;
 
     // ---- 对战 ----
     ShotResult shoot(Coord coord);
