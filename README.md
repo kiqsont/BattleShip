@@ -72,7 +72,7 @@
 
 从 [Releases · v1.0.0](https://github.com/kiqsont/BattleShip/releases/tag/v1.0.0) 下载 `BattleShip-1.0.0-win64.exe`。**只有一个 exe，双击即玩**：无需安装、无需 Qt 环境、无需手动解压；运行时把随附的运行库释放到系统临时目录，退出后自动清理。首次启动会有几秒释放过程。
 
-> 仓库当前为私有，下载 Release 资产需要登录 GitHub。该 exe 由 Qt 5.14.2 / MinGW 7.3 64-bit 从本分支源码 Release 编译，SHA-256 见 Release 说明。
+> 仓库已公开，无需登录即可下载。该 exe 由 Qt 5.14.2 / MinGW 7.3 64-bit 从 main 分支源码 Release 编译（v1.0.0 资产于 2026-11-06 重新打包）；本次更新内容与 SHA-256 见 Release 说明。
 
 ### 从源码构建
 
