@@ -20,7 +20,8 @@ class ShipPalette;
 /// 交互模型：左边海域、右边舰队侧栏。
 /// - 从侧栏把一艘舰拖到海域上，松手落子（拖动过程中棋盘给出半透明虚影）；
 /// - 拖动海域上已有的舰可以换位置，船体跟着鼠标、位置不会跳；
-/// - 把海域上的舰拖回侧栏底部即整艘收回。
+/// - 把海域上的舰拖回侧栏底部即整艘收回；
+/// - 点「随机」清空当前布置并随机摆好整支舰队，可反复点换一套，之后仍可手动拖放调整。
 ///
 /// 页面只管交互，"能不能放 / 还剩几艘"一律问 Board，不复制一份规则判断。
 class PlacementView : public QWidget
@@ -48,6 +49,7 @@ private:
     void refreshBoard();
     void refreshPalette();
     void commit();
+    void randomizeFleet();
 
     void onHullHovered(Coord cell, const HullPayload& payload);
     void onHullDropped(Coord cell, const HullPayload& payload);

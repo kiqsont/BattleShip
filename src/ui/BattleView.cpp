@@ -96,7 +96,6 @@ BattleView::BattleView(GameSession* session, QWidget* parent)
 void BattleView::startBattle()
 {
     for (int i = 0; i < kSideCount; ++i) {
-        m_volleyHits[i].clear();
         m_bars[i]->clearHits();
         m_bars[i]->clearInput();
     }
@@ -120,16 +119,20 @@ CellVisual BattleView::visualFor(Side boardOwner, Coord coord) const
         return visual;
     }
 
+    // 一同扫射打过的格子整片盖住：不看命中/落空/击沉，也不暴露舰型。
+    // 标记存在 Board 里，开火时的 cellChanged 一到就能正确渲染，重开一局自动清空。
+    if (view.volley) {
+        visual.kind = CellVisual::Kind::VolleyCover;
+        return visual;
+    }
+
     if (!view.occupied) {
         visual.kind = CellVisual::Kind::Miss;
         return visual;
     }
 
     visual.ship = view.type;
-    visual.sunk = view.sunk;
-    visual.kind = m_volleyHits[index(boardOwner)].contains(coord.flatIndex())
-                      ? CellVisual::Kind::VolleyHit
-                      : CellVisual::Kind::Hit;
+    visual.kind = CellVisual::Kind::Hit;
     return visual;
 }
 
@@ -217,13 +220,7 @@ void BattleView::onFire(Side attacker)
     if (!m_session->isVolleyArmed(attacker))
         return;
 
-    const std::vector<Coord> selected = m_session->selectedCells(attacker);
     const GameSession::VolleyOutcome outcome = m_session->fireVolley(attacker);
-
-    // 齐射命中的格子显示通用标记，除非该舰被击沉
-    QSet<int>& revealed = m_volleyHits[index(otherSide(attacker))];
-    for (const Coord& coord : selected)
-        revealed.insert(coord.flatIndex());
 
     m_bars[index(attacker)]->setHits(outcome.hits);
     m_bars[index(attacker)]->clearInput();

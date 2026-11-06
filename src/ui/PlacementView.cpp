@@ -1,5 +1,6 @@
 #include "ui/PlacementView.h"
 
+#include "core/Rules.h"
 #include "ui/BoardWidget.h"
 #include "ui/GameControls.h"
 #include "ui/Pixmaps.h"
@@ -32,7 +33,8 @@ PlacementView::PlacementView(GameSession* session, QWidget* parent)
     m_title->setPalette(titlePalette);
 
     auto* hint = new QLabel(
-        QStringLiteral("① 侧栏选方向　② 把舰拖到海域　③ 拖动可换位置　④ 拖回侧栏即收回"), this);
+        QStringLiteral("① 侧栏选方向　② 把舰拖到海域　③ 拖动可换位置　④ 拖回侧栏即收回"
+                       "　⑤ 点「随机」一键换一套"), this);
     hint->setAlignment(Qt::AlignCenter);
     hint->setWordWrap(true);
     styleLabel(hint, 13);
@@ -53,6 +55,13 @@ PlacementView::PlacementView(GameSession* session, QWidget* parent)
     buttons->setContentsMargins(0, 0, 0, 0);
     buttons->setSpacing(8);
     buttons->addStretch(1);
+
+    auto* random = new ThemeButton(QStringLiteral("随机"), this);
+    random->setFixedWidth(96);
+    random->setToolTip(QStringLiteral("清空当前布置，随机摆好全部 %1 艘舰（位置与朝向都随机）；"
+                                     "可以反复点击换一套，之后仍可手动拖放调整")
+                           .arg(rules::totalShipCount()));
+    buttons->addWidget(random);
 
     auto* save = new ThemeButton(QStringLiteral("保存"), this, ThemeButton::Accent::Seal);
     save->setFixedWidth(96);
@@ -76,6 +85,7 @@ PlacementView::PlacementView(GameSession* session, QWidget* parent)
     connect(m_board, &BoardWidget::hullDragLeft, this, &PlacementView::onHullDragLeft);
     connect(m_board, &BoardWidget::hullDragRequested, this, &PlacementView::onBoardDragRequested);
     connect(m_palette, &ShipPalette::hullReturned, this, &PlacementView::returnHull);
+    connect(random, &ThemeButton::clicked, this, &PlacementView::randomizeFleet);
     connect(save, &ThemeButton::clicked, this, &PlacementView::commit);
     connect(back, &ThemeButton::clicked, this, &PlacementView::backRequested);
 
@@ -243,6 +253,19 @@ void PlacementView::onBoardDragRequested(Coord cell)
     drag->exec(Qt::MoveAction);
 
     m_board->clearDropPreview();
+    refreshBoard();
+    refreshPalette();
+}
+
+void PlacementView::randomizeFleet()
+{
+    if (!m_session->board(m_side).randomizeFleet()) {
+        QMessageBox::warning(this, QStringLiteral("随机布阵"),
+                             QStringLiteral("这次没能排下整支舰队，请再点一次「随机」。"),
+                             QMessageBox::Close);
+        return;
+    }
+    // 写的是 Board，棋盘与侧栏都按数据重画；之后玩家仍可继续拖放微调。
     refreshBoard();
     refreshPalette();
 }

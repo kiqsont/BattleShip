@@ -437,7 +437,7 @@ ctest --test-dir build          # tst_board 10 项 + tst_gamesession 8 项 + tst
 | 「一起扫射：攻击五处」「一同扫射：选五个位置」 | 一次扫射固定覆盖 **5 格**，界面输入框填的是**次数** |
 | 「每再击沉一艘舰，得一次一起扫射」 | 只有**击沉**才累积次数，命中不算 |
 | 「Player选择位置进攻」「若击中，记录并标记战舰类型」 | 攻击的是**对方**海域，胜利判给攻击方 |
-| 「一同扫射：击中后不显示具体船只 除非击沉」 | 齐射命中显示通用标记，只有该舰沉没才暴露船型 |
+| 「一同扫射：击中后不显示具体船只 除非击沉」 | 以初版代码为准：齐射格一律用 `togeShoot.png` 遮盖。「除非击沉」在初版只体现为潜水艇格的 `S.png` 特例，不应推广成"击沉就显示船型"（见 §改动 4 的修订） |
 
 ### 改动
 
@@ -454,9 +454,15 @@ ctest --test-dir build          # tst_board 10 项 + tst_gamesession 8 项 + tst
    `rules::kCellsPerVolleyUnit` → `kCellsPerVolley`；`TurnBar` 文案与 tooltip 明确
    "输入本次使用几次扫射，每次覆盖 5 格"，`requestedUnits` → `requestedVolleys`。
 
-4. **齐射命中贴图**
-   `CellView` 增加 `sunk`；`CellVisual` 增加 `sunk`。齐射命中未击沉时显示通用爆点，
-   击沉后才显示船型（原来的"潜水艇特例"删除）。
+4. **齐射命中贴图**（此条后来按初版修订）
+   原方案：`CellView` 增加 `sunk`；`CellVisual` 增加 `sunk`。齐射命中未击沉时显示通用爆点，
+   击沉后才显示船型（删除初版的"潜水艇特例"）。
+   修订：首个提交 `df13842` 的 `button::shoot()` 对扫射过的格子一律 `togeShoot.png` 遮盖，
+   只有 `index % 4 == 1` 的潜水艇格例外显示 `S.png`，**不会**把命中的战舰内容显示出来。
+   现改为 `Board::m_volley` / `CellView::volley` + `CellVisual::Kind::VolleyCover`：
+   所有齐射格（含命中、击沉、落空）统一遮盖，`CellVisual::sunk` 删除，
+   潜水艇特例也不再保留。状态放在 `Board` 而非 `BattleView` 缓存，避免 `cellChanged`
+   先于标记写入导致闪出船型。
 
 5. **删除框坐标轴统一**
    删除框改为 X = 行、Y = 列，与放置框一致（原实现相反）。
@@ -472,7 +478,7 @@ ctest --test-dir build          # tst_board 10 项 + tst_gamesession 8 项 + tst
 |---|---|
 | 攻击自己棋盘 | `GameSession::fireAt` 与 `fireVolley` 里的 `index(otherSide(attacker))` → `index(attacker)`；`BattleView::cellInteractive` 的 `boardOwner == attacker` 判断 |
 | 命中即累积次数 | `GameSession::fireAt` 里 `result == ShotResult::Sunk` → `result != ShotResult::Miss` |
-| 齐射命中显示船型 | `CellButton::applyIcon` 的 `VolleyHit` 分支 |
+| 齐射格显示舰型（非初版行为） | `BattleView::visualFor()` 的 `VolleyCover` 分支按 `CellView::sunk` 分流，再交给 `CellButton::applyIcon()` |
 | 删除框 X = 列 | `PlacementView::deleteShip` 的 `readCoord(...)` 实参顺序 |
 
 ### 测试

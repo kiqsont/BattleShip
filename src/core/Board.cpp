@@ -1,6 +1,63 @@
 #include "core/Board.h"
 
+#include <QRandomGenerator>
+
+#include <algorithm>
+#include <vector>
+
 namespace bs {
+namespace {
+
+/// 本次要放的舰，按舰长降序：大舰先占位置，后面的小舰更容易找到空位。
+std::vector<ShipType> fleetQueue()
+{
+    std::vector<ShipType> queue;
+    for (const rules::FleetEntry& entry : rules::kFleet) {
+        for (int i = 0; i < entry.count; ++i)
+            queue.push_back(entry.type);
+    }
+    std::sort(queue.begin(), queue.end(),
+              [](ShipType a, ShipType b) { return lengthOf(a) > lengthOf(b); });
+    return queue;
+}
+
+/// 从当前所有合法落点里等概率挑一个。用穷举候选而不是"随机试 N 次"，
+/// 保证只要还有地方可放就一定放得下。
+bool placeOneRandomly(Board& board, ShipType type)
+{
+    struct Spot {
+        Coord head;
+        Direction direction;
+    };
+
+    std::vector<Spot> spots;
+    for (int row = 0; row < kBoardSize; ++row) {
+        for (int col = 0; col < kBoardSize; ++col) {
+            const Coord head(row, col);
+            for (Direction direction : kAllDirections) {
+                if (board.canPlace(type, head, direction) == PlacementError::None)
+                    spots.push_back({head, direction});
+            }
+        }
+    }
+    if (spots.empty())
+        return false;
+
+    const int pick = QRandomGenerator::global()->bounded(static_cast<int>(spots.size()));
+    const Spot& spot = spots[static_cast<size_t>(pick)];
+    return board.place(type, spot.head, spot.direction);
+}
+
+bool fillRandomly(Board& board)
+{
+    for (ShipType type : fleetQueue()) {
+        if (!placeOneRandomly(board, type))
+            return false;
+    }
+    return true;
+}
+
+} // namespace
 
 Board::Board()
 {
@@ -12,11 +69,13 @@ void Board::clear()
     m_ships.clear();
     m_owner.fill(-1);
     m_resolved.fill(false);
+    m_volley.fill(false);
 }
 
 void Board::clearResolutions()
 {
     m_resolved.fill(false);
+    m_volley.fill(false);
     for (Ship& ship : m_ships)
         ship.clearHits();
 }
@@ -65,6 +124,7 @@ bool Board::place(ShipType type, Coord head, Direction direction)
         const Coord cell = step(head, direction, i);
         m_owner[static_cast<size_t>(cell.flatIndex())] = newIndex;
         m_resolved[static_cast<size_t>(cell.flatIndex())] = false;
+        m_volley[static_cast<size_t>(cell.flatIndex())] = false;
     }
     return true;
 }
@@ -79,6 +139,7 @@ bool Board::removeShipAt(Coord coord)
         if (cell.isValid()) {
             m_owner[static_cast<size_t>(cell.flatIndex())] = -1;
             m_resolved[static_cast<size_t>(cell.flatIndex())] = false;
+            m_volley[static_cast<size_t>(cell.flatIndex())] = false;
         }
     }
 
@@ -107,6 +168,20 @@ int Board::remainingToPlace(ShipType type) const
     return rules::initialCount(type) - placedCount(type);
 }
 
+bool Board::randomizeFleet()
+{
+    // 舰队总共只占 4×1 + 3×2 + 2×4 + 1×2 = 20 格，10×10 里必然排得下；
+    // 重试只是防备极低概率的"随机把自己堵死"，失败就换一套重新排。
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        Board candidate;
+        if (!fillRandomly(candidate))
+            continue;
+        *this = candidate;
+        return true;
+    }
+    return false;
+}
+
 bool Board::hasShipAt(Coord coord) const
 {
     return shipIndexAt(coord) >= 0;
@@ -129,11 +204,23 @@ bool Board::isResolved(Coord coord) const
 
 ShotResult Board::shoot(Coord coord)
 {
+    return applyShot(coord, false);
+}
+
+ShotResult Board::shootVolley(Coord coord)
+{
+    return applyShot(coord, true);
+}
+
+ShotResult Board::applyShot(Coord coord, bool byVolley)
+{
     if (!coord.isValid() || isResolved(coord))
         return ShotResult::AlreadyResolved;
 
     const size_t flat = static_cast<size_t>(coord.flatIndex());
     m_resolved[flat] = true;
+    // 扫射格把结果一并盖住：命中/落空/击沉都不再往下暴露，界面只读这个标记。
+    m_volley[flat] = byVolley;
 
     const int index = m_owner[flat];
     if (index < 0)
@@ -172,6 +259,7 @@ CellView Board::view(Coord coord) const
 
     const size_t flat = static_cast<size_t>(coord.flatIndex());
     result.resolved = m_resolved[flat];
+    result.volley = m_volley[flat];
 
     const int index = m_owner[flat];
     if (index < 0)

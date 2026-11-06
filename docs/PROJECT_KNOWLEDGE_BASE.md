@@ -326,6 +326,7 @@ constexpr int kCellsPerVolley = 5;   // 一次"一同扫射"覆盖 5 格
 - 越界或与已有舰重叠则拒绝，**不留下半截船体**；拖动中的非法落点在松手时静默取消（不弹窗，因为虚影已经提示过）。
 - 拖动已放置的舰时保持"抓住的那一格"贴在鼠标下：落点坐标 - 抓取偏移 = 新船头。
 - 删除以「该格属于哪艘舰」为准，**整艘取回**。
+- 页面底部有「随机」按钮：清空**当前一方**的布置，按编制表随机摆好全部 9 艘（位置与朝向都随机，可反复点换一套），之后仍可手动拖放微调；不影响另一方。算法在 `Board::randomizeFleet()`：按舰长降序、逐艘从当前所有合法落点里等概率挑一个，先在临时 `Board` 排好再整体替换，因此失败也不会破坏原布置。与拖放共用 `canPlace()`，不额外加"不可相邻"之类的规则。
 - 点"保存"时的分支：9 艘全部放完 → 确认框（保存/取消）；未放完 → 警告框（是否仍返回主菜单）。两条路都可能离开页面，**代码不强制放满**（见 §13.1 第 3 条）。
 
 **对战**
@@ -338,7 +339,7 @@ constexpr int kCellsPerVolley = 5;   // 一次"一同扫射"覆盖 5 格
 - **一同扫射**：每 1 次额度 = 一次同时打 5 格（`kCellsPerVolley`）。额度可累积，可一次用完（受额度上限夹取）。
   - 瞄准后依次点选 `5 × 次数` 个格子，点"开火"发射。
   - 齐射落空（0 命中）→ 额度清零 + 换手；有命中则继续进攻。
-  - **扫射命中只显示通用爆点，不暴露舰型；只有该舰被击沉才显示船型**。
+  - **扫射打过的格子一律用 `togeShoot.png` 遮盖**：命中、击沉、落空都是同一张图，不暴露舰型，也看不出哪格命中；命中格数只看行动条的「击中 n」。这是初版 `button::shoot()` 的行为，重构时曾误改成"击沉就显示船型"，现已还原。
 - **胜利**：一方把对方舰队全部击沉即胜，判给攻击方。结束后 `phase = Finished`，不再接受任何操作。
 - 同一格在一次对局里只会被记录一次，重复点击被 `AlreadyResolved` 拦下。
 
@@ -396,14 +397,16 @@ MenuPage            MainWindow        PlacementView        GameSession/Board    
        逐格 toggleSelection（remaining 递减，可反选）
                 │
    点"开火" ──► fireVolley(): credits -= target/5
-                │           逐格 shoot()
+                │           逐格 shootVolley()（打上遮盖标记）
                 ├─ hits == 0 → credits = 0，换手
                 └─ hits  > 0 → 保持行动权
                 │
            checkVictory() → 对方全灭则 finished
 ```
 
-**UI 侧的齐射命中标记**：`BattleView::m_volleyHits[boardOwner]` 记录"本次齐射打过的格子"，`visualFor()` 据此把命中渲染成 `Kind::VolleyHit`（通用爆点）。这个集合在下一次 `startBattle()` 时清空，因此整局中齐射过的格子会一直保持"爆点"样式而不是显示舰型——这正是规则要求的效果。
+**齐射遮盖标记**：`Board::m_volley[flat]` 与 `m_resolved` 并列，记录"该格是否由一同扫射揭开"，由 `shootVolley()` 写入、`CellView::volley` 读出。`BattleView::visualFor()` 只要看到 `volley` 就渲染成 `Kind::VolleyCover`（`togeShoot.png`），不再判断命中、落空或击沉。标记随 `clearResolutions()` / `clear()` / 重新布阵清空。
+
+放在 core 而不是 UI 缓存的理由：旧实现用 `BattleView::m_volleyHits` 记录，且是在 `fireVolley()` 返回之后才补记的；而 `fireVolley()` 内部每打一格就 `emit cellChanged`，那一刻视图按旧集合刷新会先把船型画出来。状态归位到 `Board`，`cellChanged` 到达时贴图就已经是对的，重开一局也不必再手动清缓存。
 
 ---
 
@@ -426,7 +429,7 @@ MenuPage            MainWindow        PlacementView        GameSession/Board    
 
 ### 8.3 `PlacementView`（拖放式布置）
 
-布局（自上而下）：标题 → 操作提示 → `QHBoxLayout[ BoardWidget（固定 424×424，带 1..10 标号）| ShipPalette（固定 156 宽） ]` → 右下角 `保存` / `返回`。
+布局（自上而下）：标题 → 操作提示 → `QHBoxLayout[ BoardWidget（固定 424×424，带 1..10 标号）| ShipPalette（固定 156 宽） ]` → 右下角 `随机` / `保存` / `返回`。
 
 **没有输入框了**：旧版"填行列 → 点放置 / 填行列 → 点删除"的两行表单已整体删除，布置全部走拖放。
 
@@ -449,6 +452,7 @@ bool PlacementView::returnHull(Coord cell);                          // 拖回�
 - **抓取偏移**：拖动已放置的舰时记住"抓住的是船体第几格"，落点 = 该格 - 偏移，位置不会跳。
 - **虚影不写数据**：`BoardWidget` 覆盖前先备份被盖住的 `CellVisual`（`m_previewBackup`），`clearDropPreview()` 原样贴回；`refreshBoard()` 开头先清虚影。
 - **`checkDrop()` 是唯一的合法性判断**，虚影颜色和松手结果都问它，UI 里不再各自判一遍越界/相撞/余量。
+- **「随机」按钮**：槽 `PlacementView::randomizeFleet()` 直接调 `Board::randomizeFleet()`（core），成功后 `refreshBoard()` + `refreshPalette()`；只写 `m_side` 这一方的 `Board`，另一方不受影响。按钮用 `ThemeButton::Accent::Ink`，与朱红实色的「保存」区分主次，失败才弹提示框。
 - `保存` 逻辑不变：全放完 → 确认框（`Save/Cancel`），否则警告框（`Yes/No`）；两者都可能 `emit placementFinished()`。
 
 ### 8.3.1 `ShipPalette` + `ShipTile` + `HullReturnZone`
@@ -480,7 +484,7 @@ bool PlacementView::returnHull(Coord cell);                          // 拖回�
 
 | 函数 | 作用 |
 |---|---|
-| `visualFor(boardOwner, coord)` | 决定这一格画什么：未揭开（可选中→`Selected`）／落空→`Miss`／命中→`Hit`（齐射过的格子→`VolleyHit`）／布置阶段不涉及 |
+| `visualFor(boardOwner, coord)` | 决定这一格画什么：未揭开（可选中→`Selected`）／齐射格→`VolleyCover`（优先级高于落空、命中）／落空→`Miss`／单发命中→`Hit`／布置阶段不涉及 |
 | `cellInteractive(boardOwner, coord)` | 决定这一格能不能点：必须 `Battle` 阶段 + 是对方棋盘 + 未揭开 + （瞄准时还要 `isSelectable`） |
 
 交互入口 `onCellActivated()`：瞄准态 → `toggleSelection()`；否则 → `fireAt()`。
@@ -506,13 +510,13 @@ bool PlacementView::returnHull(Coord cell);                          // 拖回�
 | 默认（布置页） | `setFixedSize(40×10 + 表头)`，正方形 | 显示 |
 | `setScalable(true)`（对战页） | 完全由布局分配，`QSizePolicy::Ignored` | 全部隐藏 |
 
-`CellButton` 自绘 `paintEvent`：把缓存的贴图缩放到当前尺寸绘制 + 画 1px 发丝边框。它**不持有游戏状态**，只持有 `CellVisual`（`kind / ship / direction / sunk / valid`）与 `interactive`、`dragSource` 三个外部写入项：
+`CellButton` 自绘 `paintEvent`：把缓存的贴图缩放到当前尺寸绘制 + 画 1px 发丝边框。它**不持有游戏状态**，只持有 `CellVisual`（`kind / ship / direction / valid`）与 `interactive`、`dragSource` 三个外部写入项：
 
 ```cpp
-enum class Kind { Empty, Selected, Miss, Hit, VolleyHit, ShipHead, ShipBody, GhostHead, GhostBody };
+enum class Kind { Empty, Selected, Miss, Hit, VolleyCover, ShipHead, ShipBody, GhostHead, GhostBody };
 ```
 
-`applyIcon()` 里 `VolleyHit` 分支体现规则："`sunk ? shipIcon(type) : volleyCell()`"——未击沉只给爆点。
+`applyIcon()` 里 `VolleyCover` 分支一律取 `volleyCell()`（`togeShoot.png`），不读舰型、不读击沉状态——这就是"一同扫射把结果盖住"的落点。
 悬停只对 `Empty` 且可交互的格子生效（显示 `trace.png`）。
 
 布置页的两个额外能力：
@@ -624,7 +628,8 @@ enum class Kind { Empty, Selected, Miss, Hit, VolleyHit, ShipHead, ShipBody, Gho
 | 回合/换手/胜负规则 | `core/GameSession.cpp`：`fireAt` / `fireVolley` / `checkVictory` |
 | 落空是否清零额度 | `GameSession::fireAt` 里 `if (result == ShotResult::Miss)` 分支 |
 | 击沉才计次 → 命中即计次 | `GameSession::fireAt` 里 `result == ShotResult::Sunk` → `result != ShotResult::Miss` |
-| 齐射命中是否显示舰型 | `CellButton::applyIcon()` 的 `VolleyHit` 分支（`sunk ? shipIcon : volleyCell`） |
+| 齐射格是否显示命中内容 / 舰型 | `Board::shootVolley()` 写入的 `m_volley` 标记 + `CellButton::applyIcon()` 的 `VolleyCover` 分支（要按击沉分流，在 `BattleView::visualFor()` 里读 `CellView::sunk`） |
+| 随机布阵的顺序 / 落点选择 | `core/Board.cpp` 的 `randomizeFleet()` / `fleetQueue()` / `placeOneRandomly()`；按钮与槽在 `ui/PlacementView.cpp` |
 | 某格贴图 | `ui/Pixmaps.cpp` 对应函数 + `resources/Image/` + `res.qrc` |
 | 格子视觉状态种类 | `CellButton.h` 的 `CellVisual::Kind` + `BattleView::visualFor()` |
 | 颜色 / 字体 | `ui/Theme.cpp`（唯一来源） |

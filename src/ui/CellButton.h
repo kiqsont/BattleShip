@@ -13,21 +13,20 @@ namespace ui {
 /// 一个格子该长什么样。由视图算好再交给 CellButton，控件本身不持有任何游戏状态。
 struct CellVisual {
     enum class Kind {
-        Empty,     ///< 未揭开
-        Selected,  ///< 齐射瞄准时被选中
-        Miss,      ///< 已揭开 - 落空
-        Hit,       ///< 单发命中（显示舰种图标）
-        VolleyHit, ///< 齐射命中
-        ShipHead,  ///< 布置阶段的船头
-        ShipBody,  ///< 布置阶段的船体
-        GhostHead, ///< 拖拽落点预演的船头（半透明，不落子）
-        GhostBody  ///< 拖拽落点预演的船体
+        Empty,       ///< 未揭开
+        Selected,    ///< 齐射瞄准时被选中
+        Miss,        ///< 单发落空（红叉）
+        Hit,         ///< 单发命中（显示舰种图标）
+        VolleyCover, ///< 一同扫射揭开的格子：一律用 togeShoot.png 遮盖
+        ShipHead,    ///< 布置阶段的船头
+        ShipBody,    ///< 布置阶段的船体
+        GhostHead,   ///< 拖拽落点预演的船头（半透明，不落子）
+        GhostBody    ///< 拖拽落点预演的船体
     };
 
     Kind kind = Kind::Empty;
     ShipType ship = ShipType::Submarine;
     Direction direction = Direction::Down;
-    bool sunk = false;  ///< 该格所属舰船是否已沉没（齐射命中时决定要不要暴露船型）
     bool valid = true;  ///< 仅 Ghost：这个落点合不合法（不合法画朱红）
 
     bool isGhost() const { return kind == Kind::GhostHead || kind == Kind::GhostBody; }

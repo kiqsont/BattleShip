@@ -17,7 +17,7 @@ namespace pixmaps {
 const QPixmap& emptyCell();      ///< BasicSquare.png
 const QPixmap& traceCell();      ///< trace.png（悬停 / 已选中）
 const QPixmap& missCell();       ///< Miss.png
-const QPixmap& volleyCell();     ///< togeShoot.png（齐射命中）
+const QPixmap& volleyCell();     ///< togeShoot.png（一同扫射的遮盖图）
 const QPixmap& shipBody();       ///< ShipBody.png
 const QPixmap& shipHead(Direction direction);
 const QPixmap& shipIcon(ShipType type);

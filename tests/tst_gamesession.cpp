@@ -15,6 +15,7 @@ private slots:
     void hitDoesNotGrantVolleyCredit();
     void sinkingGrantsOneVolleyCredit();
     void volleyCoversFiveCellsPerCredit();
+    void volleyMarksEverySelectedCell();
     void cannotSelectBeyondTarget();
     void victoryGoesToAttacker();
     void beginBattleClearsPreviousShots();
@@ -107,6 +108,39 @@ void GameSessionTest::volleyCoversFiveCellsPerCredit()
     QCOMPARE(session.volleyCredits(Side::Player1), 0);
     QCOMPARE(session.currentSide(), Side::Player2);
     QVERIFY(!session.isVolleyArmed(Side::Player1));
+}
+
+void GameSessionTest::volleyMarksEverySelectedCell()
+{
+    GameSession session;
+    placeDefenderFleet(session.board(Side::Player2));
+    // 多留一艘，避免这一轮直接把对方打光而进入 Finished
+    QVERIFY(session.board(Side::Player2).place(ShipType::Cruiser, Coord(3, 0), Direction::Down));
+    session.beginBattle();
+
+    session.fireAt(Side::Player1, Coord(9, 9)); // 单发击沉潜水艇，得一次扫射
+    QVERIFY(session.armVolley(Side::Player1, 1));
+    // (0,0)~(0,3) 是战列舰（会被打沉），(0,4) 是空海
+    for (int col = 0; col < 5; ++col)
+        QVERIFY(session.toggleSelection(Side::Player1, Coord(0, col)));
+
+    const auto outcome = session.fireVolley(Side::Player1);
+    QCOMPARE(outcome.hits, 4);
+
+    const Board& defender = session.board(Side::Player2);
+    for (int col = 0; col < 5; ++col) {
+        QVERIFY(defender.view(Coord(0, col)).resolved);
+        QVERIFY(defender.view(Coord(0, col)).volley); // 命中/击沉/落空一律遮盖
+    }
+    QVERIFY(defender.view(Coord(0, 0)).sunk);
+    QVERIFY(!defender.view(Coord(9, 9)).volley); // 之前的单发格不受影响
+
+    // 重开一局：标记随战斗状态一起清空，不用界面手动清缓存
+    session.beginBattle();
+    for (int col = 0; col < 5; ++col) {
+        QVERIFY(!session.board(Side::Player2).view(Coord(0, col)).resolved);
+        QVERIFY(!session.board(Side::Player2).view(Coord(0, col)).volley);
+    }
 }
 
 void GameSessionTest::cannotSelectBeyondTarget()

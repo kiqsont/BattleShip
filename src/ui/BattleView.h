@@ -5,7 +5,6 @@
 #include "core/Types.h"
 #include "ui/CellButton.h"
 
-#include <QSet>
 #include <QWidget>
 
 namespace bs {
@@ -26,7 +25,7 @@ class BattleView : public QWidget
 public:
     explicit BattleView(GameSession* session, QWidget* parent = nullptr);
 
-    /// 开新一局：清空齐射显示缓存并重置 session。
+    /// 开新一局：重置 session（齐射遮盖标记由 Board 统一清空）并刷新界面。
     void startBattle();
 
 signals:
@@ -50,7 +49,6 @@ private:
     BoardWidget* m_boards[kSideCount] = {nullptr, nullptr};
     TurnBar* m_bars[kSideCount] = {nullptr, nullptr};
 
-    QSet<int> m_volleyHits[kSideCount]; ///< 齐射命中的格子（按棋盘归属），仅用于选择贴图
     bool m_finishedHandled = false;
 };
 

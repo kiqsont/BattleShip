@@ -1,4 +1,7 @@
 #include "core/Board.h"
+#include "core/Rules.h"
+
+#include <array>
 
 #include <QtTest>
 
@@ -14,8 +17,10 @@ private slots:
     void rejectsOverlappingPlacement();
     void removesWholeShipWhenClickingBodyCell();
     void shootReportsMissHitSunk();
+    void volleyCellsAreMarkedAndCleared();
     void allSunkOnlyAfterEveryCellHit();
     void remainingToPlaceFollowsFleetTable();
+    void randomizeFleetPlacesWholeValidFleet();
     void placingTheSameShipTwiceKeepsOccupancyConsistent();
 };
 
@@ -94,6 +99,46 @@ void BoardTest::shootReportsMissHitSunk()
     QCOMPARE(board.shoot(Coord(5, 5)), ShotResult::AlreadyResolved);
 }
 
+void BoardTest::volleyCellsAreMarkedAndCleared()
+{
+    Board board;
+    QVERIFY(board.place(ShipType::Destroyer, Coord(0, 0), Direction::Right));
+
+    // 单发落空：不遮盖
+    QCOMPARE(board.shoot(Coord(4, 4)), ShotResult::Miss);
+    QVERIFY(board.view(Coord(4, 4)).resolved);
+    QVERIFY(!board.view(Coord(4, 4)).volley);
+
+    // 齐射的命中、击沉、落空三种结果都打上同一个"遮盖"标记
+    QCOMPARE(board.shootVolley(Coord(0, 0)), ShotResult::Hit);
+    QCOMPARE(board.shootVolley(Coord(0, 1)), ShotResult::Sunk);
+    QCOMPARE(board.shootVolley(Coord(5, 5)), ShotResult::Miss);
+    QVERIFY(board.view(Coord(0, 0)).volley);
+    QVERIFY(board.view(Coord(0, 1)).volley);
+    QVERIFY(board.view(Coord(5, 5)).volley);
+    QVERIFY(board.view(Coord(0, 1)).sunk); // 状态照常记录，只是界面不再据此显示舰型
+
+    // 已揭开的格子不会被重复标记成齐射格
+    QCOMPARE(board.shootVolley(Coord(4, 4)), ShotResult::AlreadyResolved);
+    QVERIFY(!board.view(Coord(4, 4)).volley);
+
+    // 重新布阵时也把旧标记清掉
+    QVERIFY(board.place(ShipType::Submarine, Coord(2, 2), Direction::Down));
+    QCOMPARE(board.shootVolley(Coord(6, 6)), ShotResult::Miss);
+    QVERIFY(board.view(Coord(6, 6)).volley);
+    board.clear();
+    QVERIFY(!board.view(Coord(6, 6)).volley);
+    QVERIFY(!board.view(Coord(0, 0)).volley);
+
+    // 只重置战斗结果，舰队保留
+    QVERIFY(board.place(ShipType::Destroyer, Coord(0, 0), Direction::Right));
+    QCOMPARE(board.shootVolley(Coord(0, 0)), ShotResult::Hit);
+    QVERIFY(board.view(Coord(0, 0)).volley);
+    board.clearResolutions();
+    QVERIFY(!board.view(Coord(0, 0)).volley);
+    QVERIFY(board.hasShipAt(Coord(0, 0)));
+}
+
 void BoardTest::allSunkOnlyAfterEveryCellHit()
 {
     Board board;
@@ -119,6 +164,45 @@ void BoardTest::remainingToPlaceFollowsFleetTable()
 
     QVERIFY(board.place(ShipType::Cruiser, Coord(0, 0), Direction::Down));
     QCOMPARE(board.remainingToPlace(ShipType::Cruiser), 1);
+}
+
+void BoardTest::randomizeFleetPlacesWholeValidFleet()
+{
+    Board board;
+    QVERIFY(board.place(ShipType::Battleship, Coord(0, 0), Direction::Right));
+
+    int expectedCells = 0;
+    for (const rules::FleetEntry& entry : rules::kFleet)
+        expectedCells += entry.count * lengthOf(entry.type);
+
+    // 反复随机：每一轮都必须是满编、不越界、不重叠，且旧布置被清掉
+    for (int round = 0; round < 20; ++round) {
+        QVERIFY(board.randomizeFleet());
+
+        const std::vector<Ship>& ships = board.ships();
+        QCOMPARE(static_cast<int>(ships.size()), rules::totalShipCount());
+        for (const rules::FleetEntry& entry : rules::kFleet)
+            QCOMPARE(board.placedCount(entry.type), entry.count);
+
+        std::array<bool, kCellCount> seen{};
+        seen.fill(false);
+        int occupied = 0;
+        for (const Ship& ship : ships) {
+            const std::vector<Coord> cells = ship.cells();
+            QCOMPARE(static_cast<int>(cells.size()), ship.length());
+            for (const Coord& cell : cells) {
+                QVERIFY(cell.isValid());
+                const size_t flat = static_cast<size_t>(cell.flatIndex());
+                QVERIFY2(!seen[flat], "随机布阵不能有重叠格");
+                seen[flat] = true;
+                ++occupied;
+                QVERIFY(board.hasShipAt(cell));
+                QCOMPARE(board.view(cell).type, ship.type());
+                QVERIFY(!board.view(cell).resolved); // 布置阶段不该带战斗痕迹
+            }
+        }
+        QCOMPARE(occupied, expectedCells);
+    }
 }
 
 void BoardTest::placingTheSameShipTwiceKeepsOccupancyConsistent()

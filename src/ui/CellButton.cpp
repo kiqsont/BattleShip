@@ -37,8 +37,7 @@ CellButton::CellButton(Coord coord, QWidget* parent)
 void CellButton::setVisual(const CellVisual& visual)
 {
     if (m_visual.kind == visual.kind && m_visual.ship == visual.ship
-        && m_visual.direction == visual.direction && m_visual.sunk == visual.sunk
-        && m_visual.valid == visual.valid) {
+        && m_visual.direction == visual.direction && m_visual.valid == visual.valid) {
         return;
     }
     m_visual = visual;
@@ -100,9 +99,10 @@ void CellButton::applyIcon()
         case CellVisual::Kind::Hit:
             pixmap = &pixmaps::shipIcon(m_visual.ship);
             break;
-        case CellVisual::Kind::VolleyHit:
-            // 设计文档：一同扫射命中后不显示具体船只，除非该舰已被击沉
-            pixmap = m_visual.sunk ? &pixmaps::shipIcon(m_visual.ship) : &pixmaps::volleyCell();
+        case CellVisual::Kind::VolleyCover:
+            // 与初版 button::shoot() 一致：一同扫射打过的格子统一盖 togeShoot.png，
+            // 不论命中、击沉还是落空，都不把格子里的战舰内容显示出来。
+            pixmap = &pixmaps::volleyCell();
             break;
         case CellVisual::Kind::ShipHead:
         case CellVisual::Kind::GhostHead:

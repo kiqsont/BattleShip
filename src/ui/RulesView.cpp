@@ -281,8 +281,8 @@ QWidget* makeLegend(QWidget* parent = nullptr)
     layout->addWidget(makeLegendItem(pixmaps::shipIcon(ShipType::Battleship),
                                      QStringLiteral("命中"), QStringLiteral("揭开并显示舰型"),
                                      legend), 1);
-    layout->addWidget(makeLegendItem(pixmaps::volleyCell(), QStringLiteral("扫射命中"),
-                                     QStringLiteral("只显示爆点"), legend), 1);
+    layout->addWidget(makeLegendItem(pixmaps::volleyCell(), QStringLiteral("一同扫射"),
+                                     QStringLiteral("整片遮盖，不显示结果"), legend), 1);
     layout->addWidget(makeLegendItem(pixmaps::missCell(), QStringLiteral("落空"),
                                      QStringLiteral("红叉，换对方"), legend), 1);
     return legend;
@@ -526,7 +526,8 @@ QWidget* RulesView::buildContent()
         section.body->addWidget(makeBullet(
             QStringLiteral("依次点选 5 × 次数 个格子，点「开火」发射。"), column));
         section.body->addWidget(makeBullet(
-            QStringLiteral("扫射命中只显示爆点，不暴露舰型；只有击沉才显示船型。"), column));
+            QStringLiteral("扫射打过的格子会整片盖上一层爆点图，看不出哪格命中、"
+                           "也不显示舰型，只看行动条报出的「击中 n」。"), column));
         section.body->addWidget(makeFigure(QStringLiteral(":/Image/RuleInstruction5.png"),
                                            QStringLiteral("「擊沉 3 隻可得到 2 次射擊權利」—— 次数可累积"),
                                            column));

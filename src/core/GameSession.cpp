@@ -221,7 +221,9 @@ GameSession::VolleyOutcome GameSession::fireVolley(Side attacker)
     Board& target = m_boards[static_cast<size_t>(index(defender))];
     const std::vector<Coord> selected = m_selected[i];
     for (const Coord& coord : selected) {
-        if (target.shoot(coord) != ShotResult::Miss)
+        // 用 shootVolley 打上遮盖标记：cellChanged 发出时界面已经能正确渲染，
+        // 不需要等开火流程走完再由视图补记一次。
+        if (target.shootVolley(coord) != ShotResult::Miss)
             ++outcome.hits;
         emit cellChanged(defender, coord);
     }

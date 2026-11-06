@@ -39,6 +39,7 @@ private slots:
     void menuNavigatesToRulesAndBack();
     void rulesPageScrollsThroughAllSections();
     void placementPaletteListsWholeFleet();
+    void placementRandomButtonFillsFleet();
     void placementDropPlacesShip();
     void placementRejectsOverlappingDrop();
     void placementHoverShowsGhostPreview();
@@ -47,6 +48,7 @@ private slots:
     void placementCellDragCanStart();
     void placementDirectionButtonCycles();
     void battleCellClickReachesSession();
+    void volleyCellsAreCoveredInBattleView();
     void battleBoardsSeparatedByDivider();
     void battleBoardsScaleWithWindow();
     void placementBoardKeepsFixedSize();
@@ -193,6 +195,54 @@ void UiTest::placementPaletteListsWholeFleet()
     for (ui::ShipTile* tile : tiles)
         remaining += tile->remaining();
     QCOMPARE(remaining, rules::totalShipCount());
+}
+
+void UiTest::placementRandomButtonFillsFleet()
+{
+    GameSession session;
+    ui::PlacementView view(&session);
+    view.setSide(Side::Player2);
+
+    QPushButton* random = firstByText<QPushButton>(&view, QStringLiteral("随机"));
+    QVERIFY(random != nullptr);
+
+    int expectedCells = 0;
+    for (const rules::FleetEntry& entry : rules::kFleet)
+        expectedCells += entry.count * lengthOf(entry.type);
+
+    random->click();
+
+    const Board& board = session.board(Side::Player2);
+    for (const rules::FleetEntry& entry : rules::kFleet)
+        QCOMPARE(board.placedCount(entry.type), entry.count);
+    QVERIFY(session.board(Side::Player1).ships().empty()); // 只动当前这一方
+
+    // 侧栏剩余数归零
+    int remaining = 0;
+    for (ui::ShipTile* tile : view.findChildren<ui::ShipTile*>())
+        remaining += tile->remaining();
+    QCOMPARE(remaining, 0);
+
+    // 棋盘上真的画出了舰体
+    int drawn = 0;
+    for (ui::CellButton* cell : view.findChildren<ui::CellButton*>()) {
+        const auto kind = cell->visual().kind;
+        if (kind == ui::CellVisual::Kind::ShipHead || kind == ui::CellVisual::Kind::ShipBody)
+            ++drawn;
+    }
+    QCOMPARE(drawn, expectedCells);
+
+    // 再点一次换一套，仍然是合法满编（随机布阵覆盖而非叠加）
+    random->click();
+    for (const rules::FleetEntry& entry : rules::kFleet)
+        QCOMPARE(session.board(Side::Player2).placedCount(entry.type), entry.count);
+    int drawnAgain = 0;
+    for (ui::CellButton* cell : view.findChildren<ui::CellButton*>()) {
+        const auto kind = cell->visual().kind;
+        if (kind == ui::CellVisual::Kind::ShipHead || kind == ui::CellVisual::Kind::ShipBody)
+            ++drawnAgain;
+    }
+    QCOMPARE(drawnAgain, expectedCells);
 }
 
 void UiTest::placementDropPlacesShip()
@@ -409,6 +459,43 @@ void UiTest::battleCellClickReachesSession()
     // 命中不换手，且只有击沉才累积扫射次数
     QCOMPARE(session.currentSide(), Side::Player1);
     QCOMPARE(session.volleyCredits(Side::Player1), 0);
+}
+
+void UiTest::volleyCellsAreCoveredInBattleView()
+{
+    GameSession session;
+    session.board(Side::Player2).place(ShipType::Battleship, Coord(0, 0), Direction::Right);
+    session.board(Side::Player2).place(ShipType::Submarine, Coord(9, 9), Direction::Down);
+    session.board(Side::Player2).place(ShipType::Cruiser, Coord(3, 0), Direction::Down);
+
+    ui::BattleView view(&session);
+    view.startBattle();
+    const auto boards = view.findChildren<ui::BoardWidget*>();
+    QCOMPARE(boards.size(), 2);
+    QWidget* defenderBoard = boards.at(1);
+
+    // 直接走 session（不经过 BattleView::onFire）：只靠 cellChanged 信号刷新，
+    // 贴图也必须是对的——这正是把遮盖标记放进 Board 的目的。
+    session.fireAt(Side::Player1, Coord(9, 9)); // 击沉潜水艇，得一次扫射
+    QVERIFY(session.armVolley(Side::Player1, 1));
+    for (int col = 0; col < 5; ++col)
+        QVERIFY(session.toggleSelection(Side::Player1, Coord(0, col)));
+    session.fireVolley(Side::Player1);
+
+    const int cover = static_cast<int>(ui::CellVisual::Kind::VolleyCover);
+    for (int col = 0; col < 5; ++col) {
+        // 命中、击沉、落空都盖 togeShoot.png，不显示舰型/红叉
+        QCOMPARE(visualKind(defenderBoard, Coord(0, col)), cover);
+    }
+    // 单发命中的格子照旧显示舰型
+    QCOMPARE(visualKind(defenderBoard, Coord(9, 9)),
+             static_cast<int>(ui::CellVisual::Kind::Hit));
+
+    // 重开一局后，遮盖标记随棋盘一起清掉
+    view.startBattle();
+    for (int col = 0; col < 5; ++col)
+        QCOMPARE(visualKind(defenderBoard, Coord(0, col)),
+                 static_cast<int>(ui::CellVisual::Kind::Empty));
 }
 
 void UiTest::battleBoardsSeparatedByDivider()
